@@ -1,0 +1,127 @@
+{
+  "id": "Ti3AlC_2282",
+  "name": "Ti3AlC",
+  "formula": null,
+  "source": "ICDD",
+  "space_group": "Prn-3m",
+  "unit_cell": {},
+  "peaks": [
+    {
+      "d_spacing": 2.39947,
+      "two_theta": 37.450,
+      "intensity": 100.0,
+      "hkl": "1 1 1",
+      "h": 1,
+      "k": 1,
+      "l": 1
+    },
+    {
+      "d_spacing": 2.07800,
+      "two_theta": 43.517,
+      "intensity": 56.5,
+      "hkl": "2 1 0",
+      "h": 2,
+      "k": 1,
+      "l": 0
+    },
+    {
+      "d_spacing": 1.46537,
+      "two_theta": 63.234,
+      "intensity": 26.3,
+      "hkl": "2 2 0",
+      "h": 2,
+      "k": 2,
+      "l": 0
+    },
+    {
+      "d_spacing": 1.25308,
+      "two_theta": 75.864,
+      "intensity": 20.7,
+      "hkl": "3 1 1",
+      "h": 3,
+      "k": 1,
+      "l": 1
+    },
+    {
+      "d_spacing": 4.15600,
+      "two_theta": 21.363,
+      "intensity": 17.0,
+      "hkl": "1 0 0",
+      "h": 1,
+      "k": 0,
+      "l": 0
+    },
+    {
+      "d_spacing": 1.19973,
+      "two_theta": 79.891,
+      "intensity": 6.9,
+      "hkl": "2 2 2",
+      "h": 2,
+      "k": 2,
+      "l": 2
+    },
+    {
+      "d_spacing": 1.85862,
+      "two_theta": 45.969,
+      "intensity": 3.8,
+      "hkl": "2 1 0",
+      "h": 2,
+      "k": 1,
+      "l": 0
+    },
+    {
+      "d_spacing": 2.59387,
+      "two_theta": 30.392,
+      "intensity": 1.1,
+      "hkl": "1 1 0",
+      "h": 1,
+      "k": 1,
+      "l": 0
+    },
+    {
+      "d_spacing": 1.38533,
+      "two_theta": 67.565,
+      "intensity": 1.1,
+      "hkl": "2 2 1",
+      "h": 2,
+      "k": 2,
+      "l": 1
+    },
+    {
+      "d_spacing": 1.15267,
+      "two_theta": 83.868,
+      "intensity": 0.4,
+      "hkl": "3 2 0",
+      "h": 3,
+      "k": 2,
+      "l": 0
+    },
+    {
+      "d_spacing": 1.11074,
+      "two_theta": 87.816,
+      "intensity": 0.1,
+      "hkl": "3 2 1",
+      "h": 3,
+      "k": 2,
+      "l": 1
+    },
+    {
+      "d_spacing": 1.69668,
+      "two_theta": 54.002,
+      "intensity": 0.4,
+      "hkl": "2 1 1",
+      "h": 2,
+      "k": 1,
+      "l": 1
+    },
+    {
+      "d_spacing": 1.31424,
+      "two_theta": 67.565,
+      "intensity": 1.1,
+      "hkl": "3 1 0",
+      "h": 3,
+      "k": 1,
+      "l": 0
+    }
+  ]
+}

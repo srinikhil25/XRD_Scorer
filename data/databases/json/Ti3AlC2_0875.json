@@ -1,0 +1,255 @@
+{
+  "id": "Ti3AlC2_0875",
+  "name": "Ti3AlC2",
+  "formula": null,
+  "source": "ICDD",
+  "space_group": "PE3fmmc E",
+  "unit_cell": {
+    "a": 3.0654
+  },
+  "peaks": [
+    {
+      "d_spacing": 2.30544,
+      "two_theta": 39.038,
+      "intensity": 100.0,
+      "hkl": "1 0 4",
+      "h": 1,
+      "k": 0,
+      "l": 4
+    },
+    {
+      "d_spacing": 2.1585,
+      "two_theta": 41.816,
+      "intensity": 28.0,
+      "hkl": "1 0 5",
+      "h": 1,
+      "k": 0,
+      "l": 5
+    },
+    {
+      "d_spacing": 9.28509,
+      "two_theta": 9.518,
+      "intensity": 27.0,
+      "hkl": "0 0 2",
+      "h": 0,
+      "k": 0,
+      "l": 2
+    },
+    {
+      "d_spacing": 1.53461,
+      "two_theta": 60.258,
+      "intensity": 24.0,
+      "hkl": "1 1 0",
+      "h": 1,
+      "k": 1,
+      "l": 0
+    },
+    {
+      "d_spacing": 2.63145,
+      "two_theta": 34.043,
+      "intensity": 20.0,
+      "hkl": "1 0 1",
+      "h": 1,
+      "k": 0,
+      "l": 1
+    },
+    {
+      "d_spacing": 2.3179,
+      "two_theta": 38.819,
+      "intensity": 20.0,
+      "hkl": "0 0 8",
+      "h": 0,
+      "k": 0,
+      "l": 8
+    },
+    {
+      "d_spacing": 1.2783,
+      "two_theta": 74.112,
+      "intensity": 18.0,
+      "hkl": "1 1 8",
+      "h": 1,
+      "k": 1,
+      "l": 8
+    },
+    {
+      "d_spacing": 1.62554,
+      "two_theta": 56.572,
+      "intensity": 12.0,
+      "hkl": "1 0 9",
+      "h": 1,
+      "k": 0,
+      "l": 9
+    },
+    {
+      "d_spacing": 1.33357,
+      "two_theta": 70.567,
+      "intensity": 11.0,
+      "hkl": "1 0 12",
+      "h": 1,
+      "k": 0,
+      "l": 12
+    },
+    {
+      "d_spacing": 1.27272,
+      "two_theta": 74.492,
+      "intensity": 9.0,
+      "hkl": "2 0 4",
+      "h": 2,
+      "k": 0,
+      "l": 4
+    },
+    {
+      "d_spacing": 1.87369,
+      "two_theta": 48.55,
+      "intensity": 8.0,
+      "hkl": "1 0 7",
+      "h": 1,
+      "k": 0,
+      "l": 7
+    },
+    {
+      "d_spacing": 1.11715,
+      "two_theta": 87.185,
+      "intensity": 7.0,
+      "hkl": "2 0 9",
+      "h": 2,
+      "k": 0,
+      "l": 9
+    },
+    {
+      "d_spacing": 4.62597,
+      "two_theta": 19.155,
+      "intensity": 5.0,
+      "hkl": "0 0 4",
+      "h": 0,
+      "k": 0,
+      "l": 4
+    },
+    {
+      "d_spacing": 1.42059,
+      "two_theta": 65.672,
+      "intensity": 5.0,
+      "hkl": "1 0 11",
+      "h": 1,
+      "k": 0,
+      "l": 11
+    },
+    {
+      "d_spacing": 1.323,
+      "two_theta": 71.216,
+      "intensity": 4.0,
+      "hkl": "2 0 1",
+      "h": 2,
+      "k": 0,
+      "l": 1
+    },
+    {
+      "d_spacing": 1.25117,
+      "two_theta": 76.0,
+      "intensity": 4.0,
+      "hkl": "2 0 5",
+      "h": 2,
+      "k": 0,
+      "l": 5
+    },
+    {
+      "d_spacing": 2.55234,
+      "two_theta": 35.132,
+      "intensity": 3.0,
+      "hkl": "1 0 2",
+      "h": 1,
+      "k": 0,
+      "l": 2
+    },
+    {
+      "d_spacing": 2.01616,
+      "two_theta": 44.923,
+      "intensity": 3.0,
+      "hkl": "1 0 0",
+      "h": 1,
+      "k": 0,
+      "l": 0
+    },
+    {
+      "d_spacing": 1.74421,
+      "two_theta": 52.416,
+      "intensity": 3.0,
+      "hkl": "1 0 8",
+      "h": 1,
+      "k": 0,
+      "l": 8
+    },
+    {
+      "d_spacing": 1.51755,
+      "two_theta": 61.007,
+      "intensity": 3.0,
+      "hkl": "1 1 2",
+      "h": 1,
+      "k": 1,
+      "l": 2
+    },
+    {
+      "d_spacing": 1.04327,
+      "two_theta": 95.182,
+      "intensity": 3.0,
+      "hkl": "2 0 11",
+      "h": 2,
+      "k": 0,
+      "l": 11
+    },
+    {
+      "d_spacing": 1.25453,
+      "two_theta": 75.761,
+      "intensity": 2.0,
+      "hkl": "1 0 13",
+      "h": 1,
+      "k": 0,
+      "l": 13
+    },
+    {
+      "d_spacing": 1.18737,
+      "two_theta": 80.894,
+      "intensity": 2.0,
+      "hkl": "2 0 7",
+      "h": 2,
+      "k": 0,
+      "l": 7
+    },
+    {
+      "d_spacing": 1.15658,
+      "two_theta": 83.521,
+      "intensity": 2.0,
+      "hkl": "0 0 16",
+      "h": 0,
+      "k": 0,
+      "l": 16
+    },
+    {
+      "d_spacing": 2.65643,
+      "two_theta": 33.713,
+      "intensity": 1.0,
+      "hkl": "1 0 1",
+      "h": 1,
+      "k": 0,
+      "l": 1
+    },
+    {
+      "d_spacing": 1.15355,
+      "two_theta": 83.79,
+      "intensity": 1.0,
+      "hkl": "2 0 8",
+      "h": 2,
+      "k": 0,
+      "l": 8
+    },
+    {
+      "d_spacing": 2.44099,
+      "two_theta": 36.790,
+      "intensity": 8.0,
+      "hkl": "1 0 3",
+      "h": 1,
+      "k": 0,
+      "l": 3
+    }
+  ]
+}

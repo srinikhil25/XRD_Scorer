@@ -1,0 +1,27 @@
+{
+    "id": "TiO2_rutile_example",
+    "name": "TiO2 Rutile",
+    "space_group": "P 42/mnm",
+    "unit_cell": {
+        "a": 4.593,
+        "b": 4.593,
+        "c": 2.959,
+        "alpha": 90.0,
+        "beta": 90.0,
+        "gamma": 90.0
+    },
+    "peaks": [
+        {"d_spacing": 3.247, "intensity": 100, "hkl": "110"},
+        {"d_spacing": 2.488, "intensity": 50, "hkl": "101"},
+        {"d_spacing": 2.189, "intensity": 20, "hkl": "211"},
+        {"d_spacing": 1.687, "intensity": 30, "hkl": "220"},
+        {"d_spacing": 1.624, "intensity": 10, "hkl": "310"},
+        {"d_spacing": 1.480, "intensity": 15, "hkl": "301"},
+        {"d_spacing": 1.360, "intensity": 10, "hkl": "112"},
+        {"d_spacing": 1.244, "intensity": 5, "hkl": "202"},
+        {"d_spacing": 1.187, "intensity": 8, "hkl": "321"},
+        {"d_spacing": 1.062, "intensity": 5, "hkl": "400"}
+    ],
+    "source": "custom"
+}
+
