@@ -238,6 +238,12 @@ class MainWindow(QMainWindow):
         self.peak_count_label = QLabel("Peaks detected: 0")
         peak_layout.addWidget(self.peak_count_label)
         
+        # Show filtered peaks info
+        self.filtered_peaks_label = QLabel("")
+        self.filtered_peaks_label.setStyleSheet("color: #888; font-size: 8pt;")
+        self.filtered_peaks_label.setWordWrap(True)
+        peak_layout.addWidget(self.filtered_peaks_label)
+        
         peak_group.setLayout(peak_layout)
         layout.addWidget(peak_group)
         
@@ -519,6 +525,7 @@ class MainWindow(QMainWindow):
             max_intensity = np.max(data_to_use.intensity)
             prominence = max_intensity * (prominence_pct / 100.0)
             
+            # Detect peaks
             self.detected_peaks = detect_peaks(
                 data_to_use.two_theta,
                 data_to_use.intensity,
@@ -527,6 +534,44 @@ class MainWindow(QMainWindow):
             )
             
             self.peak_count_label.setText(f"Peaks detected: {len(self.detected_peaks)}")
+            
+            # Show filtered peaks (peaks that were missed) for prominence method
+            if method == 'prominence':
+                from ..core.peak_detection import get_filtered_peaks
+                
+                # Auto-calculate distance if needed
+                if len(data_to_use.two_theta) > 1:
+                    spacing = data_to_use.two_theta[1] - data_to_use.two_theta[0]
+                    distance = max(1, int(0.1 / spacing))
+                else:
+                    distance = 5
+                
+                filtered_peaks = get_filtered_peaks(
+                    data_to_use.two_theta,
+                    data_to_use.intensity,
+                    prominence,
+                    distance=distance
+                )
+                
+                if filtered_peaks and len(filtered_peaks) > 0:
+                    filtered_count = len(filtered_peaks)
+                    # Show a few examples
+                    examples = filtered_peaks[:3]
+                    example_text = ", ".join([f"{p['intensity']:.0f}@{p['two_theta']:.1f}°" 
+                                             for p in examples])
+                    if filtered_count > 3:
+                        example_text += f" (+{filtered_count-3} more)"
+                    
+                    self.filtered_peaks_label.setText(
+                        f"⚠ {filtered_count} valid peaks filtered\n"
+                        f"(prominence < {prominence:.0f} counts)\n"
+                        f"Examples: {example_text}\n"
+                        f"💡 Lower prominence to 1-2% to detect them"
+                    )
+                else:
+                    self.filtered_peaks_label.setText("")
+            else:
+                self.filtered_peaks_label.setText("")
             
             # Save peak detection results
             self.project_manager.save_peak_detection(

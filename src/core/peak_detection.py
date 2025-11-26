@@ -18,15 +18,18 @@ class DetectedPeak:
     """Container for a detected peak"""
     
     def __init__(self, two_theta: float, intensity: float, index: int, 
-                 width: Optional[float] = None, prominence: Optional[float] = None):
+                 width: Optional[float] = None, prominence: Optional[float] = None,
+                 fwhm: Optional[float] = None):
         self.two_theta = two_theta
         self.intensity = intensity
         self.index = index
-        self.width = width
+        self.width = width  # Width in data points (from scipy)
         self.prominence = prominence
+        self.fwhm = fwhm  # Full Width at Half Maximum in degrees 2θ
     
     def __repr__(self):
-        return f"Peak(2θ={self.two_theta:.2f}°, I={self.intensity:.1f})"
+        fwhm_str = f", FWHM={self.fwhm:.3f}°" if self.fwhm else ""
+        return f"Peak(2θ={self.two_theta:.2f}°, I={self.intensity:.1f}{fwhm_str})"
 
 
 def detect_peaks_threshold(two_theta: np.ndarray, intensity: np.ndarray,
@@ -96,7 +99,7 @@ def detect_peaks_prominence(two_theta: np.ndarray, intensity: np.ndarray,
         else:
             distance = 5
     
-    # Find peaks using scipy
+    # Find peaks using scipy with prominence filter
     peak_indices, properties = find_peaks(
         intensity,
         prominence=prominence,
@@ -105,18 +108,154 @@ def detect_peaks_prominence(two_theta: np.ndarray, intensity: np.ndarray,
         width=width
     )
     
+    # Calculate angular spacing for FWHM conversion
+    if len(two_theta) > 1:
+        angular_spacing = two_theta[1] - two_theta[0]
+    else:
+        angular_spacing = 0.0
+    
     peaks = []
-    for idx in peak_indices:
+    for i, idx in enumerate(peak_indices):
+        # Get width in data points
+        width_points = None
+        if 'widths' in properties and i < len(properties['widths']):
+            width_points = properties['widths'][i]
+        
+        # Convert width to FWHM in degrees 2θ
+        fwhm = None
+        if width_points is not None and angular_spacing > 0:
+            fwhm = width_points * angular_spacing
+        
+        # Calculate FWHM more accurately if width not available
+        if fwhm is None:
+            fwhm = calculate_fwhm(two_theta, intensity, idx)
+        
         peak = DetectedPeak(
             two_theta[idx],
             intensity[idx],
             idx,
-            width=properties.get('widths', [None])[list(peak_indices).index(idx)] if 'widths' in properties else None,
-            prominence=properties.get('prominences', [None])[list(peak_indices).index(idx)] if 'prominences' in properties else None
+            width=width_points,
+            prominence=properties.get('prominences', [None])[i] if 'prominences' in properties and i < len(properties['prominences']) else None,
+            fwhm=fwhm
         )
         peaks.append(peak)
     
     return peaks
+
+
+def calculate_fwhm(two_theta: np.ndarray, intensity: np.ndarray, peak_index: int) -> Optional[float]:
+    """
+    Calculate Full Width at Half Maximum (FWHM) for a peak
+    
+    Args:
+        two_theta: Two-theta values
+        intensity: Intensity values
+        peak_index: Index of the peak
+        
+    Returns:
+        FWHM in degrees 2θ, or None if calculation fails
+    """
+    if peak_index < 0 or peak_index >= len(intensity):
+        return None
+    
+    peak_intensity = intensity[peak_index]
+    if peak_intensity <= 0:
+        return None
+    
+    half_max = peak_intensity / 2.0
+    
+    # Find left half-max point
+    left_idx = peak_index
+    while left_idx > 0 and intensity[left_idx] > half_max:
+        left_idx -= 1
+    
+    # Interpolate to find exact left point
+    if left_idx < peak_index and left_idx + 1 < len(intensity):
+        # Linear interpolation
+        y1, y2 = intensity[left_idx], intensity[left_idx + 1]
+        if abs(y2 - y1) > 1e-10:  # Avoid division by zero
+            x1, x2 = two_theta[left_idx], two_theta[left_idx + 1]
+            left_2theta = x1 + (half_max - y1) * (x2 - x1) / (y2 - y1)
+        else:
+            left_2theta = two_theta[left_idx]
+    else:
+        left_2theta = two_theta[left_idx] if left_idx >= 0 else two_theta[0]
+    
+    # Find right half-max point
+    right_idx = peak_index
+    while right_idx < len(intensity) - 1 and intensity[right_idx] > half_max:
+        right_idx += 1
+    
+    # Interpolate to find exact right point
+    if right_idx > peak_index and right_idx > 0:
+        y1, y2 = intensity[right_idx - 1], intensity[right_idx]
+        if abs(y2 - y1) > 1e-10:  # Avoid division by zero
+            x1, x2 = two_theta[right_idx - 1], two_theta[right_idx]
+            right_2theta = x1 + (half_max - y1) * (x2 - x1) / (y2 - y1)
+        else:
+            right_2theta = two_theta[right_idx]
+    else:
+        right_2theta = two_theta[right_idx] if right_idx < len(two_theta) else two_theta[-1]
+    
+    fwhm = right_2theta - left_2theta
+    return fwhm if fwhm > 0 else None
+
+
+def get_filtered_peaks(two_theta: np.ndarray, intensity: np.ndarray,
+                       prominence_threshold: float,
+                       distance: Optional[int] = None) -> List[Dict]:
+    """
+    Get peaks that were filtered out due to low prominence
+    
+    This helps users see what valid peaks are being missed.
+    
+    Args:
+        two_theta: Two-theta values
+        intensity: Intensity values
+        prominence_threshold: The prominence threshold used
+        distance: Minimum distance between peaks
+        
+    Returns:
+        List of dictionaries with filtered peak information
+    """
+    if distance is None:
+        if len(two_theta) > 1:
+            spacing = two_theta[1] - two_theta[0]
+            distance = max(1, int(0.1 / spacing))
+        else:
+            distance = 5
+    
+    # Find all peaks without prominence filter (just distance)
+    all_peak_indices, all_properties = find_peaks(
+        intensity,
+        distance=distance
+    )
+    
+    # Find detected peaks with prominence filter
+    detected_indices, _ = find_peaks(
+        intensity,
+        prominence=prominence_threshold,
+        distance=distance
+    )
+    
+    detected_set = set(detected_indices)
+    
+    # Get prominence for all peaks
+    filtered_peaks = []
+    if 'prominences' in all_properties:
+        for i, idx in enumerate(all_peak_indices):
+            if idx not in detected_set:
+                peak_prominence = all_properties['prominences'][i]
+                # Only include if prominence is significant (at least 30% of threshold)
+                if peak_prominence >= prominence_threshold * 0.3:
+                    filtered_peaks.append({
+                        'two_theta': float(two_theta[idx]),
+                        'intensity': float(intensity[idx]),
+                        'prominence': float(peak_prominence),
+                        'index': int(idx)
+                    })
+    
+    return filtered_peaks
 
 
 def detect_peaks_derivative(two_theta: np.ndarray, intensity: np.ndarray,
