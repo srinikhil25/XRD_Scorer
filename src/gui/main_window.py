@@ -5,9 +5,10 @@ Provides the main user interface with file loading, processing, and visualizatio
 """
 
 import sys
+import re
 import numpy as np
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QFileDialog, QLabel, QComboBox,
@@ -25,6 +26,8 @@ from ..core.file_parser import parse_xrd_file, XRDData
 from ..core.background_subtraction import subtract_background
 from ..core.kalpha_stripping import strip_kalpha
 from ..core.reference_pattern import ReferenceDatabase, ReferencePattern
+from ..core.peak_detection import detect_peaks, match_peaks_with_reference, DetectedPeak
+from ..core.project_manager import ProjectManager
 from ..visualization.plotter import XRDPlotter
 
 
@@ -38,6 +41,10 @@ class MainWindow(QMainWindow):
         self.reference_db: Optional[ReferenceDatabase] = None
         self.plotter: Optional[XRDPlotter] = None
         self.current_ref_pattern = None
+        self.detected_peaks: List[DetectedPeak] = []
+        self.peak_match_result = None
+        self.project_manager = ProjectManager()
+        self.current_file_path: Optional[str] = None
         
         self.init_ui()
         self.load_reference_database()
@@ -107,6 +114,16 @@ class MainWindow(QMainWindow):
         load_db_action = QAction('Load Reference Database...', self)
         load_db_action.triggered.connect(self.load_reference_database_dialog)
         tools_menu.addAction(load_db_action)
+        
+        tools_menu.addSeparator()
+        
+        view_projects_action = QAction('View Projects...', self)
+        view_projects_action.triggered.connect(self.view_projects)
+        tools_menu.addAction(view_projects_action)
+        
+        open_project_action = QAction('Open Project...', self)
+        open_project_action.triggered.connect(self.open_project)
+        tools_menu.addAction(open_project_action)
         
         # Help menu
         help_menu = menubar.addMenu('Help')
@@ -198,6 +215,32 @@ class MainWindow(QMainWindow):
         ka_group.setLayout(ka_layout)
         layout.addWidget(ka_group)
         
+        # Peak detection section
+        peak_group = QGroupBox("Peak Detection")
+        peak_layout = QVBoxLayout()
+        
+        self.peak_method_combo = QComboBox()
+        self.peak_method_combo.addItems(['prominence', 'threshold', 'derivative', 'savgol'])
+        peak_layout.addWidget(QLabel("Method:"))
+        peak_layout.addWidget(self.peak_method_combo)
+        
+        self.peak_prominence_spin = QDoubleSpinBox()
+        self.peak_prominence_spin.setRange(0.1, 100.0)
+        self.peak_prominence_spin.setValue(5.0)
+        self.peak_prominence_spin.setSuffix("%")
+        peak_layout.addWidget(QLabel("Min Prominence (% of max):"))
+        peak_layout.addWidget(self.peak_prominence_spin)
+        
+        detect_peaks_btn = QPushButton("Detect Peaks")
+        detect_peaks_btn.clicked.connect(self.detect_peaks)
+        peak_layout.addWidget(detect_peaks_btn)
+        
+        self.peak_count_label = QLabel("Peaks detected: 0")
+        peak_layout.addWidget(self.peak_count_label)
+        
+        peak_group.setLayout(peak_layout)
+        layout.addWidget(peak_group)
+        
         # Reference patterns section
         ref_group = QGroupBox("Reference Patterns")
         ref_layout = QVBoxLayout()
@@ -214,6 +257,13 @@ class MainWindow(QMainWindow):
         overlay_ref_btn = QPushButton("Overlay Selected Pattern")
         overlay_ref_btn.clicked.connect(self.overlay_reference_pattern)
         ref_layout.addWidget(overlay_ref_btn)
+        
+        match_peaks_btn = QPushButton("Match Peaks with Reference")
+        match_peaks_btn.clicked.connect(self.match_peaks_with_reference)
+        ref_layout.addWidget(match_peaks_btn)
+        
+        self.match_score_label = QLabel("Match Score: -")
+        ref_layout.addWidget(self.match_score_label)
         
         ref_group.setLayout(ref_layout)
         layout.addWidget(ref_group)
@@ -263,9 +313,34 @@ class MainWindow(QMainWindow):
             try:
                 self.current_data = parse_xrd_file(file_path)
                 self.processed_data = None
-                self.file_label.setText(f"Loaded: {Path(file_path).name}")
-                self.statusBar.showMessage(f"Loaded file: {Path(file_path).name}")
+                self.current_file_path = file_path
+                
+                # Create new project for this analysis
+                project_path = self.project_manager.create_project(
+                    Path(file_path).name,
+                    file_path
+                )
+                
+                # Save original data
+                self.project_manager.save_original_data(
+                    self.current_data.two_theta,
+                    self.current_data.intensity,
+                    self.current_data.wavelength,
+                    self.current_data.metadata
+                )
+                
+                # Save initial visualization
                 self.update_plot()
+                if self.plotter:
+                    self.project_manager.save_visualization(
+                        "01_original_spectrum",
+                        self.plotter.figure
+                    )
+                
+                self.file_label.setText(f"Loaded: {Path(file_path).name}")
+                self.statusBar.showMessage(
+                    f"Loaded file: {Path(file_path).name} | Project: {project_path.name}"
+                )
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load file:\n{str(e)}")
     
@@ -301,8 +376,23 @@ class MainWindow(QMainWindow):
             
             self.processed_data.intensity = corrected
             
-            self.statusBar.showMessage(f"Background subtracted using {method}")
+            # Save processed data
+            self.project_manager.save_processed_data(
+                "background_subtraction",
+                self.processed_data.two_theta,
+                self.processed_data.intensity,
+                {"method": method, "degree": degree, **kwargs}
+            )
+            
+            # Save visualization
             self.update_plot()
+            if self.plotter:
+                self.project_manager.save_visualization(
+                    "02_background_subtracted",
+                    self.plotter.figure
+                )
+            
+            self.statusBar.showMessage(f"Background subtracted using {method}")
             
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Background subtraction failed:\n{str(e)}")
@@ -338,8 +428,23 @@ class MainWindow(QMainWindow):
             
             self.processed_data.intensity = kalpha1
             
-            self.statusBar.showMessage(f"K-alpha stripping applied using {method}")
+            # Save processed data
+            self.project_manager.save_processed_data(
+                "kalpha_stripping",
+                self.processed_data.two_theta,
+                self.processed_data.intensity,
+                {"method": method, "wavelength": wavelength}
+            )
+            
+            # Save visualization
             self.update_plot()
+            if self.plotter:
+                self.project_manager.save_visualization(
+                    "03_kalpha_stripped",
+                    self.plotter.figure
+                )
+            
+            self.statusBar.showMessage(f"K-alpha stripping applied using {method}")
             
         except Exception as e:
             QMessageBox.critical(self, "Error", f"K-alpha stripping failed:\n{str(e)}")
@@ -359,9 +464,12 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Warning", "Please enter a search term")
             return
         
-        patterns = self.reference_db.search(search_text)
+        # Strip source suffix like "(ICDD)" or "(MP)" from search text
+        search_text_clean = re.sub(r'\s*\([^)]+\)\s*$', '', search_text).strip()
+        
+        patterns = self.reference_db.search(search_text_clean)
         if not patterns:
-            QMessageBox.warning(self, "Warning", f"No patterns found matching: {search_text}")
+            QMessageBox.warning(self, "Warning", f"No patterns found matching: {search_text_clean}")
             return
         
         # Use first match
@@ -384,8 +492,132 @@ class MainWindow(QMainWindow):
         # Store for plotting
         self.current_ref_pattern = (tt_ref, int_ref, pattern.name)
         
-        self.statusBar.showMessage(f"Overlaying reference: {pattern.name}")
+        # Save visualization with reference overlay
         self.update_plot()
+        if self.plotter:
+            safe_name = pattern.name.replace(" ", "_").replace("/", "_")
+            self.project_manager.save_visualization(
+                f"05_reference_overlay_{safe_name}",
+                self.plotter.figure
+            )
+        
+        self.statusBar.showMessage(f"Overlaying reference: {pattern.name}")
+    
+    def detect_peaks(self):
+        """Detect peaks in the current data"""
+        data_to_use = self.processed_data if self.processed_data else self.current_data
+        
+        if data_to_use is None:
+            QMessageBox.warning(self, "Warning", "Please load a file first")
+            return
+        
+        try:
+            method = self.peak_method_combo.currentText()
+            prominence_pct = self.peak_prominence_spin.value()
+            
+            # Calculate prominence as absolute value
+            max_intensity = np.max(data_to_use.intensity)
+            prominence = max_intensity * (prominence_pct / 100.0)
+            
+            self.detected_peaks = detect_peaks(
+                data_to_use.two_theta,
+                data_to_use.intensity,
+                method=method,
+                prominence=prominence
+            )
+            
+            self.peak_count_label.setText(f"Peaks detected: {len(self.detected_peaks)}")
+            
+            # Save peak detection results
+            self.project_manager.save_peak_detection(
+                self.detected_peaks,
+                method,
+                {"prominence_percent": prominence_pct, "prominence_absolute": prominence}
+            )
+            
+            # Save visualization
+            self.update_plot()
+            if self.plotter:
+                self.project_manager.save_visualization(
+                    "04_peaks_detected",
+                    self.plotter.figure
+                )
+            
+            self.statusBar.showMessage(f"Detected {len(self.detected_peaks)} peaks using {method}")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Peak detection failed:\n{str(e)}")
+    
+    def match_peaks_with_reference(self):
+        """Match detected peaks with reference pattern"""
+        if len(self.detected_peaks) == 0:
+            QMessageBox.warning(self, "Warning", "Please detect peaks first")
+            return
+        
+        if self.reference_db is None or len(self.reference_db) == 0:
+            QMessageBox.warning(self, "Warning", "No reference database loaded")
+            return
+        
+        search_text = self.ref_search_combo.currentText()
+        if not search_text:
+            QMessageBox.warning(self, "Warning", "Please select a reference pattern")
+            return
+        
+        # Strip source suffix like "(ICDD)" or "(MP)" from search text
+        search_text_clean = re.sub(r'\s*\([^)]+\)\s*$', '', search_text).strip()
+        
+        patterns = self.reference_db.search(search_text_clean)
+        if not patterns:
+            QMessageBox.warning(self, "Warning", f"No patterns found matching: {search_text_clean}")
+            return
+        
+        # Use first match
+        pattern = patterns[0]
+        
+        # Match peaks
+        self.peak_match_result = match_peaks_with_reference(
+            self.detected_peaks,
+            pattern,
+            tolerance=0.2  # 0.2 degree tolerance
+        )
+        
+        match_score = self.peak_match_result['match_score']
+        matched_count = len(self.peak_match_result['matched_peaks'])
+        total_ref_peaks = len(pattern.two_theta) if pattern.two_theta is not None else 0
+        
+        self.match_score_label.setText(
+            f"Match Score: {match_score:.1f}% ({matched_count}/{total_ref_peaks} peaks matched)"
+        )
+        
+        # Save match results
+        pattern_data = {
+            "id": pattern.id,
+            "name": pattern.name,
+            "source": pattern.data.get("source"),
+            "two_theta": pattern.two_theta.tolist() if pattern.two_theta is not None else [],
+            "intensity": pattern.intensity.tolist() if pattern.intensity is not None else []
+        }
+        self.project_manager.save_reference_match(
+            pattern.name,
+            self.peak_match_result,
+            pattern_data
+        )
+        
+        # Also overlay the reference pattern
+        self.overlay_reference_pattern()
+        
+        # Save visualization with matched peaks
+        self.update_plot()
+        if self.plotter:
+            safe_name = pattern.name.replace(" ", "_").replace("/", "_")
+            self.project_manager.save_visualization(
+                f"06_peaks_matched_{safe_name}",
+                self.plotter.figure
+            )
+        
+        self.statusBar.showMessage(
+            f"Matched {matched_count} peaks with {pattern.name} (Score: {match_score:.1f}%)"
+        )
     
     def toggle_sidebar(self):
         """Toggle sidebar collapse/expand"""
@@ -461,26 +693,74 @@ class MainWindow(QMainWindow):
                 linewidth=0.8  # Thinner lines
             )
         
+        # Plot detected peaks
+        if len(self.detected_peaks) > 0:
+            peak_tt = [p.two_theta for p in self.detected_peaks]
+            peak_int = [p.intensity for p in self.detected_peaks]
+            self.plotter.plot_peaks(
+                np.array(peak_tt),
+                np.array(peak_int),
+                label=f'Detected Peaks ({len(self.detected_peaks)})',
+                color='orange',
+                marker='v',
+                markersize=6,
+                show_values=True,
+                value_format='intensity'  # Show intensity values
+            )
+            
+            # Highlight matched peaks if available
+            if self.peak_match_result and self.peak_match_result['matched_peaks']:
+                matched_tt = [mp[0].two_theta for mp in self.peak_match_result['matched_peaks']]
+                matched_int = [mp[0].intensity for mp in self.peak_match_result['matched_peaks']]
+                self.plotter.plot_peaks(
+                    np.array(matched_tt),
+                    np.array(matched_int),
+                    label=f'Matched Peaks ({len(matched_tt)})',
+                    color='purple',
+                    marker='*',
+                    markersize=8
+                )
+        
         self.plotter.set_labels()
         self.plotter.set_title("XRD Spectrum")
         self.plotter.finalize()
         self.plotter.get_canvas().draw()
     
     def load_reference_database(self):
-        """Load default reference database"""
-        db_path = Path(__file__).parent.parent.parent / "data" / "examples" / "reference_patterns"
-        if db_path.exists():
-            try:
-                self.reference_db = ReferenceDatabase(str(db_path))
-                self.statusBar.showMessage(f"Loaded {len(self.reference_db)} reference patterns")
-                
-                # Populate search combo
-                self.ref_search_combo.clear()
-                for pattern in self.reference_db.get_all():
-                    self.ref_search_combo.addItem(pattern.name or pattern.id)
-            except Exception as e:
-                print(f"Warning: Could not load reference database: {e}")
-                self.reference_db = ReferenceDatabase()
+        """Load default reference databases from multiple locations"""
+        base_path = Path(__file__).parent.parent.parent / "data"
+        
+        # List of database directories to load
+        db_paths = [
+            base_path / "examples" / "reference_patterns",  # MP database
+            base_path / "databases" / "json"  # ICDD database
+        ]
+        
+        self.reference_db = ReferenceDatabase()
+        
+        # Load from all database locations
+        for db_path in db_paths:
+            if db_path.exists():
+                try:
+                    self.reference_db.load_database(str(db_path))
+                except Exception as e:
+                    print(f"Warning: Could not load database from {db_path}: {e}")
+        
+        # Update status and populate search combo
+        pattern_count = len(self.reference_db)
+        if pattern_count > 0:
+            self.statusBar.showMessage(f"Loaded {pattern_count} reference patterns")
+            
+            # Populate search combo
+            self.ref_search_combo.clear()
+            for pattern in self.reference_db.get_all():
+                display_name = pattern.name or pattern.id
+                if pattern.data.get('source'):
+                    display_name += f" ({pattern.data.get('source')})"
+                self.ref_search_combo.addItem(display_name)
+        else:
+            self.statusBar.showMessage("No reference patterns loaded")
+            self.reference_db = ReferenceDatabase()
     
     def load_reference_database_dialog(self):
         """Load reference database from dialog"""
@@ -492,15 +772,116 @@ class MainWindow(QMainWindow):
         
         if db_path:
             try:
-                self.reference_db = ReferenceDatabase(db_path)
-                self.statusBar.showMessage(f"Loaded {len(self.reference_db)} reference patterns")
+                # Add the selected directory to existing database
+                if self.reference_db is None:
+                    self.reference_db = ReferenceDatabase()
                 
-                # Populate search combo
+                self.reference_db.load_database(db_path)
+                pattern_count = len(self.reference_db)
+                self.statusBar.showMessage(f"Loaded {pattern_count} reference patterns")
+                
+                # Repopulate search combo with all patterns
                 self.ref_search_combo.clear()
                 for pattern in self.reference_db.get_all():
-                    self.ref_search_combo.addItem(pattern.name or pattern.id)
+                    display_name = pattern.name or pattern.id
+                    if pattern.data.get('source'):
+                        display_name += f" ({pattern.data.get('source')})"
+                    self.ref_search_combo.addItem(display_name)
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load database:\n{str(e)}")
+    
+    def view_projects(self):
+        """View all projects"""
+        projects = self.project_manager.list_projects()
+        
+        if not projects:
+            QMessageBox.information(self, "Projects", "No projects found.")
+            return
+        
+        # Create a simple dialog showing projects
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QListWidget, QPushButton
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Projects")
+        dialog.setGeometry(200, 200, 600, 400)
+        layout = QVBoxLayout(dialog)
+        
+        list_widget = QListWidget()
+        for project in projects:
+            item_text = f"{project['name']}\n"
+            item_text += f"  Source: {project['source_file']}\n"
+            item_text += f"  Created: {project['created_at']}\n"
+            item_text += f"  Steps: {project['analysis_steps']}"
+            list_widget.addItem(item_text)
+        
+        layout.addWidget(list_widget)
+        
+        open_btn = QPushButton("Open Selected Project")
+        open_btn.clicked.connect(lambda: self.open_project_from_list(list_widget, projects, dialog))
+        layout.addWidget(open_btn)
+        
+        dialog.exec()
+    
+    def open_project_from_list(self, list_widget, projects, dialog):
+        """Open project from list selection"""
+        current_row = list_widget.currentRow()
+        if current_row >= 0:
+            project = projects[current_row]
+            self.open_project_path(project['path'])
+            dialog.accept()
+    
+    def open_project(self):
+        """Open project dialog"""
+        project_path = QFileDialog.getExistingDirectory(
+            self,
+            "Select Project Folder",
+            str(self.project_manager.projects_root)
+        )
+        
+        if project_path:
+            self.open_project_path(project_path)
+    
+    def open_project_path(self, project_path: str):
+        """Open a project from path"""
+        try:
+            project_info = self.project_manager.load_project(project_path)
+            
+            # Load original data
+            data_path = Path(project_path) / "original_data" / "raw_data.json"
+            if data_path.exists():
+                with open(data_path, 'r') as f:
+                    data = json.load(f)
+                
+                self.current_data = XRDData(
+                    np.array(data['two_theta']),
+                    np.array(data['intensity']),
+                    data.get('wavelength'),
+                    data.get('metadata', {})
+                )
+                
+                self.current_file_path = project_info.get('source_file_path', '')
+                self.file_label.setText(f"Project: {project_info.get('source_file', 'Unknown')}")
+                
+                # Try to load latest processed data
+                processed_dir = Path(project_path) / "processed_data"
+                if processed_dir.exists():
+                    processed_files = sorted(processed_dir.glob("*.json"), reverse=True)
+                    if processed_files:
+                        with open(processed_files[0], 'r') as f:
+                            proc_data = json.load(f)
+                        self.processed_data = XRDData(
+                            np.array(proc_data['two_theta']),
+                            np.array(proc_data['intensity']),
+                            self.current_data.wavelength,
+                            self.current_data.metadata
+                        )
+                
+                self.update_plot()
+                self.statusBar.showMessage(f"Opened project: {Path(project_path).name}")
+            else:
+                QMessageBox.warning(self, "Warning", "Project data not found")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open project:\n{str(e)}")
     
     def show_about(self):
         """Show about dialog"""
@@ -514,7 +895,8 @@ class MainWindow(QMainWindow):
             "- Background subtraction\n"
             "- K-alpha stripping\n"
             "- Reference pattern matching\n"
-            "- Interactive visualization"
+            "- Interactive visualization\n"
+            "- Project-based data management"
         )
 
 

@@ -131,7 +131,8 @@ class XRDPlotter:
     
     def plot_peaks(self, two_theta: np.ndarray, intensity: np.ndarray,
                    label: str = 'Peaks', color: str = 'red',
-                   marker: str = 'v', markersize: int = 8):
+                   marker: str = 'v', markersize: int = 8,
+                   show_values: bool = True, value_format: str = 'intensity'):
         """
         Plot peak positions
         
@@ -142,9 +143,41 @@ class XRDPlotter:
             color: Marker color
             marker: Marker style
             markersize: Marker size
+            show_values: Whether to show peak values as text labels
+            value_format: Format for values ('intensity', 'two_theta', or 'both')
         """
         self.axes.plot(two_theta, intensity, marker=marker, color=color,
                       markersize=markersize, linestyle='None', label=label)
+        
+        # Add text labels for peak values
+        if show_values:
+            for tt, inten in zip(two_theta, intensity):
+                # Determine what to display
+                if value_format == 'intensity':
+                    text = f'{inten:.0f}'
+                elif value_format == 'two_theta':
+                    text = f'{tt:.2f}°'
+                elif value_format == 'both':
+                    text = f'{tt:.1f}°\n{inten:.0f}'
+                else:
+                    text = f'{inten:.0f}'
+                
+                # Position text above the peak marker
+                # Offset by a small percentage of the y-axis range
+                y_range = self.axes.get_ylim()[1] - self.axes.get_ylim()[0]
+                y_offset = y_range * 0.03  # 3% of y-axis range
+                
+                self.axes.annotate(
+                    text,
+                    xy=(tt, inten),
+                    xytext=(tt, inten + y_offset),
+                    ha='center',
+                    va='bottom',
+                    fontsize=7,
+                    color=color,
+                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white', 
+                            edgecolor=color, alpha=0.7, linewidth=0.5)
+                )
     
     def plot_background(self, two_theta: np.ndarray, background: np.ndarray,
                        label: str = 'Background', color: str = 'orange',

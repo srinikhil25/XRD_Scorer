@@ -67,25 +67,43 @@ class ReferencePattern:
                     if max_int > 0:
                         self.intensity = (self.intensity / max_int) * 100
         
-        # Simple format: has 'peaks' array
+        # Simple format: has 'peaks' array (ICDD format or similar)
         elif 'peaks' in self.data:
             peaks = self.data['peaks']
             d_spacings = []
+            two_thetas = []
             intensities = []
             hkl_list = []
             
             for peak in peaks:
                 if isinstance(peak, dict):
-                    d_spacings.append(peak.get('d_spacing', 0))
-                    intensities.append(peak.get('intensity', 0))
-                    hkl_list.append(peak.get('hkl', ''))
+                    d_spacing = peak.get('d_spacing', 0)
+                    two_theta = peak.get('two_theta', None)
+                    intensity = peak.get('intensity', 0)
+                    hkl = peak.get('hkl', '')
+                    
+                    d_spacings.append(d_spacing)
+                    intensities.append(intensity)
+                    hkl_list.append(hkl)
+                    
+                    # Use two_theta if provided, otherwise calculate from d_spacing
+                    if two_theta is not None:
+                        two_thetas.append(two_theta)
+                    elif d_spacing > 0 and self.wavelength:
+                        # Calculate from d-spacing using Bragg's law
+                        two_theta_calc = 2 * np.rad2deg(np.arcsin(self.wavelength / (2 * d_spacing)))
+                        two_thetas.append(two_theta_calc)
+                    else:
+                        two_thetas.append(0)
             
             self.d_spacing = np.array(d_spacings)
             self.intensity = np.array(intensities)
             self.hkl = hkl_list
             
-            # Convert d-spacing to two-theta if wavelength is available
-            if self.wavelength and len(self.d_spacing) > 0:
+            if len(two_thetas) > 0:
+                self.two_theta = np.array(two_thetas)
+            elif self.wavelength and len(self.d_spacing) > 0:
+                # Fallback: Convert d-spacing to two-theta if not provided
                 # Bragg's law: n*lambda = 2*d*sin(theta)
                 # 2*theta = 2*arcsin(lambda/(2*d))
                 self.two_theta = 2 * np.rad2deg(np.arcsin(self.wavelength / (2 * self.d_spacing)))
@@ -129,7 +147,7 @@ class ReferenceDatabase:
             self.load_database(database_path)
     
     def load_database(self, database_path: str):
-        """Load reference patterns from directory"""
+        """Load reference patterns from directory or file"""
         path = Path(database_path)
         
         if path.is_file():
@@ -142,6 +160,11 @@ class ReferenceDatabase:
                     self._load_file(json_file)
                 except Exception as e:
                     print(f"Warning: Could not load {json_file}: {e}")
+    
+    def load_multiple_databases(self, database_paths: List[str]):
+        """Load reference patterns from multiple directories"""
+        for db_path in database_paths:
+            self.load_database(db_path)
     
     def _load_file(self, file_path: Path):
         """Load a single JSON file"""
@@ -163,12 +186,18 @@ class ReferenceDatabase:
     
     def search(self, query: str) -> List[ReferencePattern]:
         """Search patterns by name or ID"""
-        query_lower = query.lower()
+        query_lower = query.lower().strip()
         results = []
         
         for pattern in self.patterns:
-            if (query_lower in pattern.name.lower() or 
-                query_lower in pattern.id.lower()):
+            pattern_name = (pattern.name or "").lower()
+            pattern_id = (pattern.id or "").lower()
+            
+            # Check if query matches name, id, or is contained in either
+            if (query_lower in pattern_name or 
+                query_lower in pattern_id or
+                pattern_name.startswith(query_lower) or
+                pattern_id.startswith(query_lower)):
                 results.append(pattern)
         
         return results
