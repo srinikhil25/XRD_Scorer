@@ -21,13 +21,61 @@ class XRDPlotter:
         self.canvas = FigureCanvas(self.figure)
         self.axes = self.figure.add_subplot(111)
         
+        # Enable zoom and pan
+        self.canvas.mpl_connect('button_press_event', self._on_click)
+        self.canvas.mpl_connect('scroll_event', self._on_scroll)
+    
+    def _on_click(self, event):
+        """Handle mouse clicks for zoom"""
+        if event.inaxes != self.axes:
+            return
+        if event.button == 2:  # Middle mouse button to reset
+            self.axes.relim()
+            self.axes.autoscale()
+            self.canvas.draw()
+    
+    def _on_scroll(self, event):
+        """Handle mouse scroll for zoom"""
+        if event.inaxes != self.axes:
+            return
+        
+        # Zoom with scroll wheel
+        cur_xlim = self.axes.get_xlim()
+        cur_ylim = self.axes.get_ylim()
+        
+        xdata = event.xdata
+        ydata = event.ydata
+        
+        if xdata is None or ydata is None:
+            return
+        
+        if event.button == 'up':
+            # Zoom in
+            scale_factor = 0.9
+        elif event.button == 'down':
+            # Zoom out
+            scale_factor = 1.1
+        else:
+            return
+        
+        new_width = (cur_xlim[1] - cur_xlim[0]) * scale_factor
+        new_height = (cur_ylim[1] - cur_ylim[0]) * scale_factor
+        
+        relx = (cur_xlim[1] - xdata) / (cur_xlim[1] - cur_xlim[0])
+        rely = (cur_ylim[1] - ydata) / (cur_ylim[1] - cur_ylim[0])
+        
+        self.axes.set_xlim([xdata - new_width * (1 - relx), xdata + new_width * relx])
+        self.axes.set_ylim([ydata - new_height * (1 - rely), ydata + new_height * rely])
+        self.canvas.draw()
+        
     def clear(self):
         """Clear the plot"""
         self.axes.clear()
     
     def plot_spectrum(self, two_theta: np.ndarray, intensity: np.ndarray,
                      label: str = 'Intensity', color: str = 'blue',
-                     linewidth: float = 1.0, show_negative: bool = True):
+                     linewidth: float = 0.8, show_negative: bool = True,
+                     smooth: bool = False):
         """
         Plot XRD spectrum
         
@@ -36,18 +84,30 @@ class XRDPlotter:
             intensity: Intensity values
             label: Label for the plot
             color: Line color
-            linewidth: Line width
+            linewidth: Line width (reduced for thinner lines)
             show_negative: Whether to show negative values (after background subtraction)
+            smooth: Whether to apply smoothing
         """
-        self.axes.plot(two_theta, intensity, label=label, color=color, 
+        # Apply smoothing if requested
+        if smooth and len(intensity) > 10:
+            from scipy.ndimage import gaussian_filter1d
+            intensity_plot = gaussian_filter1d(intensity, sigma=1.0)
+        else:
+            intensity_plot = intensity
+        
+        self.axes.plot(two_theta, intensity_plot, label=label, color=color, 
                       linewidth=linewidth)
         
         if show_negative:
             # Show negative values explicitly
             negative_mask = intensity < 0
             if np.any(negative_mask):
+                # Make negative markers same visual thickness as the line
+                # Use very small markersize to match linewidth appearance
+                marker_size = max(0.5, linewidth * 0.6)  # Smaller markers to match thin line
                 self.axes.plot(two_theta[negative_mask], intensity[negative_mask],
-                             'o', color='red', markersize=3, alpha=0.5,
+                             'o', color='red', markersize=marker_size, 
+                             markeredgewidth=0.2, alpha=0.7,
                              label='Negative values')
     
     def plot_reference_pattern(self, two_theta: np.ndarray, intensity: np.ndarray,

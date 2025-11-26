@@ -54,8 +54,8 @@ def rachinger_correction(two_theta: np.ndarray, intensity: np.ndarray,
     # Subtract Kα2 from original to get Kα1
     kalpha1_intensity = intensity - kalpha2_intensity
     
-    # Ensure non-negative (though some methods allow negative)
-    kalpha1_intensity = np.maximum(kalpha1_intensity, 0)
+    # Keep negative values visible (don't clip to zero)
+    # Negative values are shown for visualization purposes
     
     return kalpha1_intensity, kalpha2_intensity
 

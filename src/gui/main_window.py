@@ -15,6 +15,11 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QSplitter, QStatusBar)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction
+try:
+    from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
+except ImportError:
+    # Fallback for older matplotlib versions
+    from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 
 from ..core.file_parser import parse_xrd_file, XRDData
 from ..core.background_subtraction import subtract_background
@@ -50,19 +55,24 @@ class MainWindow(QMainWindow):
         main_layout = QHBoxLayout(central_widget)
         
         # Create splitter for resizable panels
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        main_layout.addWidget(splitter)
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        main_layout.addWidget(self.splitter)
         
         # Left panel: Controls
-        left_panel = self.create_control_panel()
-        splitter.addWidget(left_panel)
+        self.left_panel = self.create_control_panel()
+        self.splitter.addWidget(self.left_panel)
         
         # Right panel: Visualization
         right_panel = self.create_visualization_panel()
-        splitter.addWidget(right_panel)
+        self.splitter.addWidget(right_panel)
         
         # Set splitter proportions (30% left, 70% right)
-        splitter.setSizes([300, 1100])
+        self.splitter.setSizes([300, 1100])
+        
+        # Store original left panel width for collapse/expand
+        self.left_panel_min_width = 50  # Minimum width when collapsed (10%)
+        self.left_panel_max_width = 400  # Maximum width when expanded
+        self.is_collapsed = False
         
         # Create menu bar
         self.create_menu_bar()
@@ -110,6 +120,13 @@ class MainWindow(QMainWindow):
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setSpacing(10)
+        
+        # Add collapse/expand button at the top
+        collapse_btn = QPushButton("◄ Collapse")
+        collapse_btn.setMaximumWidth(100)
+        collapse_btn.clicked.connect(self.toggle_sidebar)
+        layout.addWidget(collapse_btn)
+        self.collapse_btn = collapse_btn
         
         # File loading section
         file_group = QGroupBox("File Loading")
@@ -223,6 +240,12 @@ class MainWindow(QMainWindow):
         
         # Create plotter
         self.plotter = XRDPlotter()
+        
+        # Add navigation toolbar for zoom/pan
+        toolbar = NavigationToolbar(self.plotter.get_canvas(), panel)
+        layout.addWidget(toolbar)
+        
+        # Add canvas
         layout.addWidget(self.plotter.get_canvas())
         
         return panel
@@ -364,10 +387,29 @@ class MainWindow(QMainWindow):
         self.statusBar.showMessage(f"Overlaying reference: {pattern.name}")
         self.update_plot()
     
+    def toggle_sidebar(self):
+        """Toggle sidebar collapse/expand"""
+        current_sizes = self.splitter.sizes()
+        total_width = sum(current_sizes)
+        
+        if self.is_collapsed:
+            # Expand: restore to ~30% of total width
+            new_left_width = int(total_width * 0.3)
+            self.splitter.setSizes([new_left_width, total_width - new_left_width])
+            self.collapse_btn.setText("◄ Collapse")
+            self.is_collapsed = False
+        else:
+            # Collapse: reduce to ~10% of total width
+            new_left_width = int(total_width * 0.1)
+            self.splitter.setSizes([new_left_width, total_width - new_left_width])
+            self.collapse_btn.setText("► Expand")
+            self.is_collapsed = True
+    
     def reset_data(self):
         """Reset to original data"""
         self.processed_data = None
-        self.current_ref_pattern = None
+        if hasattr(self, 'current_ref_pattern'):
+            self.current_ref_pattern = None
         self.statusBar.showMessage("Reset to original data")
         self.update_plot()
     
@@ -384,23 +426,29 @@ class MainWindow(QMainWindow):
             self.plotter.get_canvas().draw()
             return
         
-        # Plot original data
-        self.plotter.plot_spectrum(
-            self.current_data.two_theta,
-            self.current_data.intensity,
-            label='Original',
-            color='blue',
-            show_negative=False
-        )
-        
-        # Plot processed data if available
+        # Only plot processed data if available, otherwise plot original
+        # Don't show both original and processed at the same time
         if self.processed_data is not None:
+            # Plot processed data only
             self.plotter.plot_spectrum(
                 self.processed_data.two_theta,
                 self.processed_data.intensity,
                 label='Processed',
                 color='red',
-                show_negative=True
+                show_negative=True,
+                smooth=True,  # Enable smoothing
+                linewidth=0.8  # Thinner lines
+            )
+        else:
+            # Plot original data only when no processing has been done
+            self.plotter.plot_spectrum(
+                self.current_data.two_theta,
+                self.current_data.intensity,
+                label='Original',
+                color='blue',
+                show_negative=False,
+                smooth=True,  # Enable smoothing
+                linewidth=0.8  # Thinner lines
             )
         
         # Plot reference pattern if available
@@ -409,7 +457,8 @@ class MainWindow(QMainWindow):
             self.plotter.plot_reference_pattern(
                 tt_ref, int_ref,
                 label=f'Reference: {name}',
-                color='green'
+                color='green',
+                linewidth=0.8  # Thinner lines
             )
         
         self.plotter.set_labels()
