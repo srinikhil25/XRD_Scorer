@@ -52,5 +52,6 @@ htmlcov/
 *.tmp
 
 #imp data
-20250520/
+input_data/
 projects/
+data/

@@ -221,6 +221,214 @@ class TXTParser:
         return XRDData(np.array(two_thetas), np.array(intensities), None, metadata)
 
 
+class RAWParser:
+    """Parser for RAW files (binary format, often from Rigaku/PANalytical)
+    
+    RAW files typically have:
+    - A header section with metadata (start angle, end angle, step size, data count)
+    - A data section with intensity values as float32 (little-endian)
+    
+    This parser uses multiple detection methods to handle different RAW file formats.
+    """
+    
+    @staticmethod
+    def parse(file_path: str) -> XRDData:
+        """Parse RAW file using multiple detection strategies"""
+        import struct
+        
+        with open(file_path, 'rb') as f:
+            data = f.read()
+        
+        file_size = len(data)
+        data_count = None
+        data_offset = None
+        start_angle = None
+        end_angle = None
+        step = None
+        
+        # Method 1: Look for data count that matches file structure
+        # Common pattern: count (4 bytes) followed by data (count * 4 bytes) = file_size
+        for offset in range(0, min(10000, file_size - 4), 4):
+            try:
+                count = struct.unpack_from('<I', data, offset)[0]
+                expected_data_size = count * 4
+                # Check if count + data fits exactly in file
+                if 100 <= count <= 100000:
+                    # Pattern 1: count at offset, data immediately after
+                    if offset + 4 + expected_data_size == file_size:
+                        data_count = count
+                        data_offset = offset + 4
+                        break
+                    # Pattern 2: header + count + data
+                    # Try if there's a reasonable header before count
+                    if offset >= 100 and offset + 4 + expected_data_size <= file_size:
+                        # Verify the data section looks valid (not all zeros, reasonable range)
+                        test_data = np.frombuffer(
+                            data[offset + 4:offset + 4 + min(100 * 4, expected_data_size)],
+                            dtype='<f4'
+                        )
+                        if len(test_data) > 0:
+                            # Check if values are reasonable (not all zeros, not NaN/Inf)
+                            if (np.any(test_data > 0) and 
+                                np.all(np.isfinite(test_data)) and 
+                                np.all(test_data < 1e10)):
+                                # This looks like valid data
+                                data_count = count
+                                data_offset = offset + 4
+                                break
+            except:
+                continue
+        
+        # Method 2: Search for start/end/step values in header, then find matching count
+        if data_count is None:
+            found_start = None
+            found_end = None
+            found_step = None
+            
+            # Search for reasonable angle values in header
+            for offset in range(0, min(10000, file_size - 4), 4):
+                try:
+                    val = struct.unpack_from('<f', data, offset)[0]
+                    # Start angle typically 4-10 degrees
+                    if found_start is None and 4.0 <= val <= 10.0:
+                        found_start = (offset, val)
+                    # End angle typically 80-100 degrees
+                    if found_end is None and 80.0 <= val <= 100.0:
+                        found_end = (offset, val)
+                    # Step size typically 0.01-0.1 degrees
+                    if found_step is None and 0.01 <= val <= 0.1:
+                        found_step = (offset, val)
+                except:
+                    continue
+            
+            # If we found start, end, and step, calculate expected count
+            if found_start and found_end and found_step:
+                start_angle = found_start[1]
+                end_angle = found_end[1]
+                step = found_step[1]
+                data_count = int((end_angle - start_angle) / step) + 1
+                
+                # Try to find where data starts (after header)
+                # Common header sizes: 512, 1024, 2048, 3238, 4096 bytes
+                for header_size in [3238, 2048, 4096, 1024, 512, 256, 128]:
+                    if header_size + data_count * 4 <= file_size:
+                        # Verify this location has valid data
+                        test_data = np.frombuffer(
+                            data[header_size:header_size + min(100 * 4, data_count * 4)],
+                            dtype='<f4'
+                        )
+                        if len(test_data) > 0:
+                            if (np.any(test_data > 0) and 
+                                np.all(np.isfinite(test_data)) and 
+                                np.all(test_data < 1e10)):
+                                data_offset = header_size
+                                break
+        
+        # Method 3: Assume data is at the end (last N float32 values)
+        if data_count is None or data_offset is None:
+            # Try to find count value near the end of header
+            remaining = file_size % 4
+            if remaining > 0:
+                # Header has remainder, count might be at remainder position
+                header_size = remaining
+                if header_size + 4 <= file_size:
+                    try:
+                        count = struct.unpack_from('<I', data, header_size)[0]
+                        if 100 <= count <= 100000:
+                            expected_end = header_size + 4 + count * 4
+                            if expected_end == file_size:
+                                data_count = count
+                                data_offset = header_size + 4
+                    except:
+                        pass
+            
+            # If still not found, try to find count by checking file structure
+            if data_count is None:
+                # Assume data is last N float32 values, where N is reasonable
+                # Try different header sizes
+                for header_size in [3238, 2048, 4096, 1024, 512, 256]:
+                    potential_count = (file_size - header_size) // 4
+                    if 100 <= potential_count <= 100000:
+                        # Verify data looks valid
+                        test_data = np.frombuffer(
+                            data[header_size:header_size + min(100 * 4, potential_count * 4)],
+                            dtype='<f4'
+                        )
+                        if len(test_data) > 0:
+                            if (np.any(test_data > 0) and 
+                                np.all(np.isfinite(test_data)) and 
+                                np.all(test_data < 1e10)):
+                                data_count = potential_count
+                                data_offset = header_size
+                                break
+        
+        # Method 4: Final fallback - use file size to estimate
+        if data_count is None:
+            # Assume reasonable header size and calculate data count
+            estimated_header = min(4096, file_size // 4)  # Max 4KB header
+            data_count = (file_size - estimated_header) // 4
+            data_offset = estimated_header
+            if data_count < 100:
+                raise ValueError("RAW file too small or invalid structure")
+        
+        # Set defaults for angles if not found
+        if start_angle is None:
+            start_angle = 5.0
+        if end_angle is None:
+            end_angle = 90.0
+        if step is None:
+            step = 0.02
+        
+        # Read intensity data
+        if data_offset + data_count * 4 > file_size:
+            raise ValueError(f"Invalid data structure: offset={data_offset}, count={data_count}, file_size={file_size}")
+        
+        intensities = np.frombuffer(
+            data[data_offset:data_offset + data_count * 4],
+            dtype='<f4'
+        )
+        
+        # Don't filter values - keep all data as-is (negative values are valid after processing)
+        # Only filter obviously corrupted data (NaN, Inf, or extremely large values)
+        valid_mask = np.isfinite(intensities) & (intensities < 1e10)
+        if np.any(valid_mask):
+            if not np.all(valid_mask):
+                # Some invalid values, but keep valid ones
+                intensities = intensities[valid_mask]
+                data_count = len(intensities)
+        
+        # Generate two-theta values using the actual start/end/step from header
+        if data_count > 0:
+            # Use actual end angle from header if available, otherwise calculate
+            if end_angle and start_angle and step:
+                # Calculate expected count
+                expected_count = int((end_angle - start_angle) / step) + 1
+                if abs(expected_count - data_count) <= 1:
+                    # Counts match, use header values
+                    two_thetas = np.linspace(start_angle, end_angle, data_count)
+                else:
+                    # Counts don't match, calculate from step
+                    end_angle = start_angle + (data_count - 1) * step
+                    two_thetas = np.linspace(start_angle, end_angle, data_count)
+            else:
+                # Calculate from step
+                end_angle = start_angle + (data_count - 1) * step
+                two_thetas = np.linspace(start_angle, end_angle, data_count)
+        else:
+            raise ValueError("No valid data found in RAW file")
+        
+        metadata = {
+            'file_type': 'RAW',
+            'file_path': file_path,
+            'data_count': data_count,
+            'start_angle': float(start_angle),
+            'end_angle': float(end_angle),
+            'step': float(step)
+        }
+        
+        return XRDData(two_thetas, intensities, None, metadata)
+
+
 def parse_xrd_file(file_path: str) -> XRDData:
     """
     Universal parser that detects file format and parses accordingly
@@ -242,13 +450,21 @@ def parse_xrd_file(file_path: str) -> XRDData:
         return ASCParser.parse(file_path)
     elif suffix == '.txt':
         return TXTParser.parse(file_path)
+    elif suffix == '.raw':
+        return RAWParser.parse(file_path)
     else:
         # Try to detect format from content
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-            first_line = f.readline()
-            if 'xrdml' in first_line.lower() or '<?xml' in first_line:
-                return XRDMLParser.parse(file_path)
-            else:
-                # Default to TXT parser
-                return TXTParser.parse(file_path)
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                first_line = f.readline()
+                if 'xrdml' in first_line.lower() or '<?xml' in first_line:
+                    return XRDMLParser.parse(file_path)
+                else:
+                    # Default to TXT parser
+                    return TXTParser.parse(file_path)
+        except (UnicodeDecodeError, IsADirectoryError):
+            # Binary file - try RAW parser
+            if suffix == '' or path.name.lower().endswith('.raw'):
+                return RAWParser.parse(file_path)
+            raise ValueError(f"Unknown file format: {file_path}")
 

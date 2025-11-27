@@ -6,6 +6,7 @@ Provides the main user interface with file loading, processing, and visualizatio
 
 import sys
 import re
+import json
 import numpy as np
 from pathlib import Path
 from typing import Optional, List
@@ -312,7 +313,7 @@ class MainWindow(QMainWindow):
             self,
             "Open XRD File",
             "",
-            "XRD Files (*.xrdml *.dat *.asc *.txt);;All Files (*)"
+            "XRD Files (*.xrdml *.dat *.asc *.txt *.raw);;All Files (*)"
         )
         
         if file_path:
@@ -485,15 +486,28 @@ class MainWindow(QMainWindow):
         tt_min = np.min(self.current_data.two_theta)
         tt_max = np.max(self.current_data.two_theta)
         
-        # Generate continuous pattern
-        tt_ref, int_ref = pattern.get_continuous_pattern((tt_min, tt_max))
-        
-        # Normalize to match current data scale
-        if len(int_ref) > 0:
-            max_current = np.max(self.current_data.intensity)
-            max_ref = np.max(int_ref)
-            if max_ref > 0:
-                int_ref = (int_ref / max_ref) * max_current * 0.5  # Scale to 50% of max
+        # Use discrete peaks (not continuous) for publication-ready stick plot
+        # Filter peaks within the two-theta range
+        if pattern.two_theta is not None and pattern.intensity is not None:
+            mask = (pattern.two_theta >= tt_min) & (pattern.two_theta <= tt_max)
+            tt_ref = pattern.two_theta[mask]
+            int_ref = pattern.intensity[mask]
+            
+            # Normalize intensity to match current data scale (30% of max for visibility)
+            if len(int_ref) > 0:
+                max_current = np.max(self.current_data.intensity)
+                max_ref = np.max(int_ref)
+                if max_ref > 0:
+                    # Scale to 30% of max intensity for clear visibility without overwhelming
+                    int_ref = (int_ref / max_ref) * max_current * 0.3
+        else:
+            # Fallback: generate continuous pattern if discrete peaks not available
+            tt_ref, int_ref = pattern.get_continuous_pattern((tt_min, tt_max))
+            if len(int_ref) > 0:
+                max_current = np.max(self.current_data.intensity)
+                max_ref = np.max(int_ref)
+                if max_ref > 0:
+                    int_ref = (int_ref / max_ref) * max_current * 0.3
         
         # Store for plotting
         self.current_ref_pattern = (tt_ref, int_ref, pattern.name)
@@ -683,10 +697,28 @@ class MainWindow(QMainWindow):
             self.is_collapsed = True
     
     def reset_data(self):
-        """Reset to original data"""
+        """Reset to original data - clears all processing, peaks, and reference patterns"""
+        # Clear processed data
         self.processed_data = None
-        if hasattr(self, 'current_ref_pattern'):
-            self.current_ref_pattern = None
+        
+        # Clear reference pattern overlay
+        self.current_ref_pattern = None
+        
+        # Clear peak detection results
+        self.detected_peaks = []
+        self.peak_match_result = None
+        
+        # Reset UI labels
+        if hasattr(self, 'peak_count_label'):
+            self.peak_count_label.setText("Peaks detected: 0")
+        if hasattr(self, 'filtered_peaks_label'):
+            self.filtered_peaks_label.setText("")
+        if hasattr(self, 'match_score_label'):
+            self.match_score_label.setText("Match Score: -")
+        if hasattr(self, 'ref_overlay_checkbox'):
+            self.ref_overlay_checkbox.setText("Overlay: Off")
+        
+        # Update plot (will clear all overlays)
         self.statusBar.showMessage("Reset to original data")
         self.update_plot()
     
@@ -728,18 +760,78 @@ class MainWindow(QMainWindow):
                 linewidth=0.8  # Thinner lines
             )
         
-        # Plot reference pattern if available
+        # Adjust y-axis limits to accommodate reference pattern if present
+        # This must be done before plotting reference pattern
+        if hasattr(self, 'current_ref_pattern') and self.current_ref_pattern:
+            if self.plotter and self.plotter.axes:
+                # Get current y-limits after data is plotted
+                y_min, y_max = self.plotter.axes.get_ylim()
+                y_range = y_max - y_min
+                # Extend y-axis downward by 25% to create space for reference pattern
+                new_y_min = y_min - y_range * 0.25
+                self.plotter.axes.set_ylim(bottom=new_y_min)
+        
+        # Plot reference pattern if available (as vertical sticks)
         if hasattr(self, 'current_ref_pattern') and self.current_ref_pattern:
             tt_ref, int_ref, name = self.current_ref_pattern
+            # Get updated y-axis limits after adjustment
+            if self.plotter and self.plotter.axes:
+                y_min, y_max = self.plotter.axes.get_ylim()
+                y_range = y_max - y_min
+                # Position reference pattern in the bottom 20% of the extended range
+                # This creates clear visual separation from experimental data
+                ref_offset = y_min + y_range * 0.05  # 5% from bottom
+                ref_height = y_range * 0.15  # Use 15% of range for reference pattern height
+            else:
+                ref_offset = 0.0
+                ref_height = None
+            
+            # Add a horizontal separator line for visual clarity (before plotting reference)
+            if self.plotter and self.plotter.axes:
+                # Separator at 12% from bottom (between data and reference)
+                separator_y = y_min + y_range * 0.12
+                self.plotter.axes.axhline(
+                    y=separator_y,
+                    color='#888888',  # Medium gray
+                    linestyle='--',
+                    linewidth=1.0,
+                    alpha=0.6,
+                    zorder=1,  # Behind other elements
+                    label=''  # Don't add to legend
+                )
+            
             self.plotter.plot_reference_pattern(
                 tt_ref, int_ref,
                 label=f'Reference: {name}',
-                color='green',
-                linewidth=0.8  # Thinner lines
+                color='#2E7D32',  # Dark green for publication
+                linewidth=1.2,
+                alpha=0.85,
+                offset=ref_offset,
+                max_height=ref_height
             )
         
         # Plot detected peaks
-        if len(self.detected_peaks) > 0:
+        # If reference pattern is active, only show matched peaks for better readability
+        has_ref_pattern = hasattr(self, 'current_ref_pattern') and self.current_ref_pattern
+        has_match_result = self.peak_match_result and self.peak_match_result.get('matched_peaks')
+        
+        if has_ref_pattern and has_match_result:
+            # Only show matched peaks when reference pattern is displayed
+            matched_tt = [mp[0].two_theta for mp in self.peak_match_result['matched_peaks']]
+            matched_int = [mp[0].intensity for mp in self.peak_match_result['matched_peaks']]
+            if len(matched_tt) > 0:
+                self.plotter.plot_peaks(
+                    np.array(matched_tt),
+                    np.array(matched_int),
+                    label=f'Matched Peaks ({len(matched_tt)})',
+                    color='#7B1FA2',  # Purple for matched peaks
+                    marker='*',
+                    markersize=8,
+                    show_values=True,
+                    value_format='intensity'
+                )
+        elif len(self.detected_peaks) > 0:
+            # Show all detected peaks when no reference pattern is active
             peak_tt = [p.two_theta for p in self.detected_peaks]
             peak_int = [p.intensity for p in self.detected_peaks]
             self.plotter.plot_peaks(
@@ -753,18 +845,19 @@ class MainWindow(QMainWindow):
                 value_format='intensity'  # Show intensity values
             )
             
-            # Highlight matched peaks if available
-            if self.peak_match_result and self.peak_match_result['matched_peaks']:
+            # Highlight matched peaks if available (but no reference pattern shown)
+            if has_match_result:
                 matched_tt = [mp[0].two_theta for mp in self.peak_match_result['matched_peaks']]
                 matched_int = [mp[0].intensity for mp in self.peak_match_result['matched_peaks']]
-                self.plotter.plot_peaks(
-                    np.array(matched_tt),
-                    np.array(matched_int),
-                    label=f'Matched Peaks ({len(matched_tt)})',
-                    color='purple',
-                    marker='*',
-                    markersize=8
-                )
+                if len(matched_tt) > 0:
+                    self.plotter.plot_peaks(
+                        np.array(matched_tt),
+                        np.array(matched_int),
+                        label=f'Matched Peaks ({len(matched_tt)})',
+                        color='purple',
+                        marker='*',
+                        markersize=8
+                    )
         
         self.plotter.set_labels()
         self.plotter.set_title("XRD Spectrum")
@@ -936,7 +1029,7 @@ class MainWindow(QMainWindow):
             "XRD Scorer v1.0.0\n\n"
             "Desktop application for X-ray Diffraction data analysis.\n\n"
             "Features:\n"
-            "- Multi-format file support (XRDML, DAT, ASC, TXT)\n"
+            "- Multi-format file support (XRDML, DAT, ASC, TXT, RAW)\n"
             "- Background subtraction\n"
             "- K-alpha stripping\n"
             "- Reference pattern matching\n"

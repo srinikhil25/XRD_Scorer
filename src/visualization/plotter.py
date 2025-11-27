@@ -111,23 +111,50 @@ class XRDPlotter:
                              label='Negative values')
     
     def plot_reference_pattern(self, two_theta: np.ndarray, intensity: np.ndarray,
-                              label: str = 'Reference', color: str = 'green',
-                              linestyle: str = '--', linewidth: float = 1.5,
-                              alpha: float = 0.7):
+                              label: str = 'Reference', color: str = '#2E7D32',
+                              linewidth: float = 1.0, alpha: float = 0.8,
+                              offset: float = 0.0, max_height: Optional[float] = None):
         """
-        Plot reference pattern overlay
+        Plot reference pattern as vertical sticks (publication-ready style)
         
         Args:
-            two_theta: Two-theta values
-            intensity: Intensity values
+            two_theta: Two-theta peak positions (discrete peaks)
+            intensity: Peak intensities
             label: Label for the plot
-            color: Line color
-            linestyle: Line style
-            linewidth: Line width
+            color: Stick color (default: dark green for publication)
+            linewidth: Line width for sticks
             alpha: Transparency
+            offset: Y-axis offset (for positioning below experimental data)
+            max_height: Maximum height for reference pattern area (for scaling)
         """
-        self.axes.plot(two_theta, intensity, label=label, color=color,
-                      linestyle=linestyle, linewidth=linewidth, alpha=alpha)
+        if len(two_theta) == 0 or len(intensity) == 0:
+            return
+        
+        # Scale intensities to fit within the reference pattern area
+        if max_height is not None:
+            max_intensity = np.max(intensity) if len(intensity) > 0 else 1.0
+            if max_intensity > 0:
+                scale_factor = max_height / max_intensity
+                intensity = intensity * scale_factor
+        
+        # Plot as vertical sticks (bars) - publication standard
+        # Each peak is a vertical line from baseline to intensity
+        for tt, inten in zip(two_theta, intensity):
+            if inten > 0:  # Only plot non-zero intensities
+                self.axes.plot(
+                    [tt, tt],  # Same x position (vertical line)
+                    [offset, offset + inten],  # From baseline to peak height
+                    color=color,
+                    linewidth=linewidth,
+                    alpha=alpha,
+                    solid_capstyle='round',  # Rounded line caps
+                    zorder=2  # Above separator line
+                )
+        
+        # Add a single entry to legend (avoid cluttering with one per peak)
+        # Use a small invisible line just for legend
+        self.axes.plot([], [], color=color, linewidth=linewidth, 
+                      alpha=alpha, label=label)
     
     def plot_peaks(self, two_theta: np.ndarray, intensity: np.ndarray,
                    label: str = 'Peaks', color: str = 'red',
