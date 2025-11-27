@@ -1,0 +1,52 @@
+XRD Scorer - Installation Instructions
+=======================================
+
+NO INSTALLATION REQUIRED!
+-------------------------
+
+This is a standalone executable - you can run it directly without installing anything.
+
+HOW TO USE:
+-----------
+
+1. Extract this zip file to any folder (e.g., Desktop, Documents, etc.)
+
+2. Double-click "XRD_Scorer.exe" to launch the application
+
+3. That's it! The application will open and you can start analyzing XRD data.
+
+SYSTEM REQUIREMENTS:
+--------------------
+- Windows 10 or later
+- No Python or other software needed
+- The executable includes everything required
+
+FIRST TIME USE:
+---------------
+1. Click "Load File" button
+2. Select your XRD data file (.xrdml, .dat, .asc, or .txt)
+3. The graph will display automatically
+4. Use the controls on the left to:
+   - Subtract background
+   - Apply K-alpha stripping
+   - Detect peaks
+   - Match with reference patterns
+
+TROUBLESHOOTING:
+----------------
+
+If Windows shows "Windows protected your PC":
+- Click "More info"
+- Click "Run anyway"
+- This is a false positive (Windows Defender SmartScreen)
+- The software is safe to use
+
+If the application doesn't start:
+- Make sure you're on Windows 10 or later
+- Try right-clicking and selecting "Run as administrator"
+- Check if your antivirus is blocking it
+
+SUPPORT:
+--------
+For issues or questions, contact: [Your contact information]
+
