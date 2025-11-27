@@ -374,10 +374,9 @@ class RAWParser:
         # Set defaults for angles if not found
         if start_angle is None:
             start_angle = 5.0
-        if end_angle is None:
-            end_angle = 90.0
         if step is None:
             step = 0.02
+        # Don't set default end_angle here - calculate it from data_count
         
         # Read intensity data
         if data_offset + data_count * 4 > file_size:
@@ -399,20 +398,81 @@ class RAWParser:
         
         # Generate two-theta values using the actual start/end/step from header
         if data_count > 0:
-            # Use actual end angle from header if available, otherwise calculate
-            if end_angle and start_angle and step:
-                # Calculate expected count
-                expected_count = int((end_angle - start_angle) / step) + 1
-                if abs(expected_count - data_count) <= 1:
-                    # Counts match, use header values
-                    two_thetas = np.linspace(start_angle, end_angle, data_count)
+            # Validate and calculate two-theta range
+            # Priority: Always calculate from actual data count, validate header values
+            if start_angle and step:
+                # Calculate end angle from data count and step (most reliable)
+                calculated_end = start_angle + (data_count - 1) * step
+                
+                # If we have an end_angle from header, validate it
+                if end_angle:
+                    # Calculate expected count from header values
+                    expected_count = int((end_angle - start_angle) / step) + 1
+                    
+                    # Only use header end_angle if ALL conditions are met:
+                    # 1. Expected count matches actual count (within 1)
+                    # 2. End angle is reasonable (5-120 degrees typical for XRD)
+                    # 3. Calculated end from data count is close to header end (within 5 degrees)
+                    if (abs(expected_count - data_count) <= 1 and 
+                        5.0 <= end_angle <= 120.0 and
+                        abs(calculated_end - end_angle) < 5.0):
+                        # Header values are valid, use them
+                        two_thetas = np.linspace(start_angle, end_angle, data_count)
+                        end_angle = end_angle  # Use header value
+                    else:
+                        # Header end_angle is wrong or unreasonable, use calculated
+                        # But also check if calculated_end is reasonable
+                        if calculated_end > 120.0:
+                            # Calculated end is too large, likely step is wrong
+                            # Try to infer correct step from common XRD ranges
+                            # Most XRD scans are 5-90 degrees
+                            if start_angle >= 4.0 and start_angle <= 6.0:
+                                # Assume standard 5-90 degree range
+                                inferred_end = 90.0
+                                inferred_step = (inferred_end - start_angle) / (data_count - 1)
+                                if 0.005 <= inferred_step <= 0.1:
+                                    # Inferred step is reasonable, use it
+                                    step = inferred_step
+                                    end_angle = inferred_end
+                                    two_thetas = np.linspace(start_angle, end_angle, data_count)
+                                else:
+                                    # Use calculated but cap at reasonable max
+                                    end_angle = min(calculated_end, 120.0)
+                                    two_thetas = np.linspace(start_angle, end_angle, data_count)
+                            else:
+                                # Use calculated but cap at reasonable max
+                                end_angle = min(calculated_end, 120.0)
+                                two_thetas = np.linspace(start_angle, end_angle, data_count)
+                        else:
+                            # Calculated end is reasonable, use it
+                            end_angle = calculated_end
+                            two_thetas = np.linspace(start_angle, end_angle, data_count)
                 else:
-                    # Counts don't match, calculate from step
-                    end_angle = start_angle + (data_count - 1) * step
-                    two_thetas = np.linspace(start_angle, end_angle, data_count)
+                    # No end_angle from header, calculate from step
+                    calculated_end = start_angle + (data_count - 1) * step
+                    # Cap at reasonable maximum
+                    if calculated_end > 120.0 and start_angle >= 4.0 and start_angle <= 6.0:
+                        # Likely should be 5-90 range, recalculate step
+                        inferred_end = 90.0
+                        inferred_step = (inferred_end - start_angle) / (data_count - 1)
+                        if 0.005 <= inferred_step <= 0.1:
+                            step = inferred_step
+                            end_angle = inferred_end
+                            two_thetas = np.linspace(start_angle, end_angle, data_count)
+                        else:
+                            end_angle = min(calculated_end, 120.0)
+                            two_thetas = np.linspace(start_angle, end_angle, data_count)
+                    else:
+                        end_angle = min(calculated_end, 120.0)
+                        two_thetas = np.linspace(start_angle, end_angle, data_count)
             else:
-                # Calculate from step
-                end_angle = start_angle + (data_count - 1) * step
+                # Fallback: use defaults
+                if start_angle is None:
+                    start_angle = 5.0
+                if step is None:
+                    step = 0.02
+                calculated_end = start_angle + (data_count - 1) * step
+                end_angle = min(calculated_end, 90.0)  # Cap at 90 for default
                 two_thetas = np.linspace(start_angle, end_angle, data_count)
         else:
             raise ValueError("No valid data found in RAW file")
