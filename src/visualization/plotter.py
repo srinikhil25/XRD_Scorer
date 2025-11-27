@@ -113,7 +113,8 @@ class XRDPlotter:
     def plot_reference_pattern(self, two_theta: np.ndarray, intensity: np.ndarray,
                               label: str = 'Reference', color: str = '#2E7D32',
                               linewidth: float = 1.0, alpha: float = 0.8,
-                              offset: float = 0.0, max_height: Optional[float] = None):
+                              offset: float = 0.0, max_height: Optional[float] = None,
+                              hkl_labels: Optional[List[str]] = None):
         """
         Plot reference pattern as vertical sticks (publication-ready style)
         
@@ -126,6 +127,7 @@ class XRDPlotter:
             alpha: Transparency
             offset: Y-axis offset (for positioning below experimental data)
             max_height: Maximum height for reference pattern area (for scaling)
+            hkl_labels: List of HKL labels for each peak (e.g., ['100', '110', '111'])
         """
         if len(two_theta) == 0 or len(intensity) == 0:
             return
@@ -139,8 +141,9 @@ class XRDPlotter:
         
         # Plot as vertical sticks (bars) - publication standard
         # Each peak is a vertical line from baseline to intensity
-        for tt, inten in zip(two_theta, intensity):
+        for i, (tt, inten) in enumerate(zip(two_theta, intensity)):
             if inten > 0:  # Only plot non-zero intensities
+                # Plot the vertical stick
                 self.axes.plot(
                     [tt, tt],  # Same x position (vertical line)
                     [offset, offset + inten],  # From baseline to peak height
@@ -150,6 +153,44 @@ class XRDPlotter:
                     solid_capstyle='round',  # Rounded line caps
                     zorder=2  # Above separator line
                 )
+                
+                # Add HKL label above the stick if available
+                if hkl_labels and i < len(hkl_labels) and hkl_labels[i]:
+                    hkl_value = hkl_labels[i]
+                    
+                    # Format HKL value: convert "101" or [1,0,1] to "(1 0 1)"
+                    if isinstance(hkl_value, (list, tuple)):
+                        # If it's a list/tuple like [1, 0, 1]
+                        hkl_text = f"({' '.join(map(str, hkl_value))})"
+                    elif isinstance(hkl_value, str):
+                        # If it's a string like "101" or "1 0 1"
+                        hkl_str = hkl_value.strip()
+                        # Check if it's already formatted with spaces
+                        if ' ' in hkl_str:
+                            hkl_text = f"({hkl_str})"
+                        else:
+                            # Split digits and add spaces: "101" -> "(1 0 1)"
+                            hkl_text = f"({' '.join(hkl_str)})"
+                    else:
+                        hkl_text = f"({hkl_value})"
+                    
+                    # Position label slightly above the peak
+                    label_y = offset + inten + (max_height * 0.08 if max_height else inten * 0.15)
+                    
+                    # Add text annotation (rotated -90 degrees to prevent overlapping)
+                    self.axes.annotate(
+                        hkl_text,
+                        xy=(tt, offset + inten),
+                        xytext=(tt, label_y),
+                        ha='center',
+                        va='bottom',
+                        fontsize=7,
+                        color=color,
+                        fontweight='normal',
+                        alpha=0.85,
+                        rotation=90,  # Rotate -90 degrees (vertical, reading bottom to top)
+                        zorder=3  # Above sticks
+                    )
         
         # Add a single entry to legend (avoid cluttering with one per peak)
         # Use a small invisible line just for legend

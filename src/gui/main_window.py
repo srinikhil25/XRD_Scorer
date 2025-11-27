@@ -55,32 +55,48 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("XRD Scorer - X-ray Diffraction Data Analysis")
         self.setGeometry(100, 100, 1400, 900)
         
+        # Get screen width for calculating sidebar width
+        screen = self.screen().availableGeometry()
+        screen_width = screen.width()
+        
+        # Calculate fixed sidebar width (12.5% of screen width, between 10-15%)
+        sidebar_width = int(screen_width * 0.125)
+        # Ensure minimum and maximum reasonable sizes
+        sidebar_width = max(200, min(sidebar_width, 300))  # Between 200-300 pixels
+        
         # Create central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
         # Main layout
         main_layout = QHBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
         
-        # Create splitter for resizable panels
+        # Create splitter for panels
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        # Disable resizing by setting childrenCollapsible to False
+        self.splitter.setChildrenCollapsible(False)
+        # Disable manual resizing by user
+        self.splitter.setHandleWidth(0)  # Hide the resize handle
         main_layout.addWidget(self.splitter)
         
         # Left panel: Controls
         self.left_panel = self.create_control_panel()
+        # Set fixed width for sidebar
+        self.left_panel.setMinimumWidth(sidebar_width)
+        self.left_panel.setMaximumWidth(sidebar_width)
         self.splitter.addWidget(self.left_panel)
         
         # Right panel: Visualization
         right_panel = self.create_visualization_panel()
         self.splitter.addWidget(right_panel)
         
-        # Set splitter proportions (30% left, 70% right)
-        self.splitter.setSizes([300, 1100])
-        
-        # Store original left panel width for collapse/expand
-        self.left_panel_min_width = 50  # Minimum width when collapsed (10%)
-        self.left_panel_max_width = 400  # Maximum width when expanded
-        self.is_collapsed = False
+        # Set splitter sizes (fixed sidebar, rest for visualization)
+        # Calculate right panel width (window width - sidebar - margins)
+        window_width = self.width()
+        right_width = window_width - sidebar_width - 50  # 50 for margins/borders
+        self.splitter.setSizes([sidebar_width, right_width])
         
         # Create menu bar
         self.create_menu_bar()
@@ -138,13 +154,9 @@ class MainWindow(QMainWindow):
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setSpacing(10)
+        layout.setContentsMargins(10, 10, 10, 10)
         
-        # Add collapse/expand button at the top
-        collapse_btn = QPushButton("◄ Collapse")
-        collapse_btn.setMaximumWidth(100)
-        collapse_btn.clicked.connect(self.toggle_sidebar)
-        layout.addWidget(collapse_btn)
-        self.collapse_btn = collapse_btn
+        # Removed collapse button - sidebar is now fixed width
         
         # File loading section
         file_group = QGroupBox("File Loading")
@@ -255,6 +267,10 @@ class MainWindow(QMainWindow):
         self.ref_search_combo = QComboBox()
         self.ref_search_combo.setEditable(True)
         self.ref_search_combo.setPlaceholderText("Search reference patterns...")
+        # Set maximum visible items to reduce empty space
+        self.ref_search_combo.setMaxVisibleItems(10)
+        # Set minimum height to prevent excessive empty space
+        self.ref_search_combo.setMinimumHeight(30)
         ref_layout.addWidget(QLabel("Search:"))
         ref_layout.addWidget(self.ref_search_combo)
         
@@ -488,10 +504,20 @@ class MainWindow(QMainWindow):
         
         # Use discrete peaks (not continuous) for publication-ready stick plot
         # Filter peaks within the two-theta range
+        hkl_ref = None
         if pattern.two_theta is not None and pattern.intensity is not None:
             mask = (pattern.two_theta >= tt_min) & (pattern.two_theta <= tt_max)
             tt_ref = pattern.two_theta[mask]
             int_ref = pattern.intensity[mask]
+            
+            # Filter HKL labels to match filtered peaks
+            if pattern.hkl is not None and len(pattern.hkl) == len(pattern.two_theta):
+                # Convert to list if it's not already
+                hkl_list = list(pattern.hkl) if not isinstance(pattern.hkl, list) else pattern.hkl
+                # Apply same mask to HKL labels
+                hkl_ref = [hkl_list[i] for i in range(len(mask)) if mask[i]]
+            else:
+                hkl_ref = None
             
             # Normalize intensity to match current data scale (30% of max for visibility)
             if len(int_ref) > 0:
@@ -503,14 +529,15 @@ class MainWindow(QMainWindow):
         else:
             # Fallback: generate continuous pattern if discrete peaks not available
             tt_ref, int_ref = pattern.get_continuous_pattern((tt_min, tt_max))
+            hkl_ref = None  # No HKL labels for continuous pattern
             if len(int_ref) > 0:
                 max_current = np.max(self.current_data.intensity)
                 max_ref = np.max(int_ref)
                 if max_ref > 0:
                     int_ref = (int_ref / max_ref) * max_current * 0.3
         
-        # Store for plotting
-        self.current_ref_pattern = (tt_ref, int_ref, pattern.name)
+        # Store for plotting (include HKL labels)
+        self.current_ref_pattern = (tt_ref, int_ref, pattern.name, hkl_ref)
         
         # Save visualization with reference overlay
         self.update_plot()
@@ -678,23 +705,16 @@ class MainWindow(QMainWindow):
             f"Matched {matched_count} peaks with {pattern.name} (Score: {match_score:.1f}%)"
         )
     
-    def toggle_sidebar(self):
-        """Toggle sidebar collapse/expand"""
-        current_sizes = self.splitter.sizes()
-        total_width = sum(current_sizes)
-        
-        if self.is_collapsed:
-            # Expand: restore to ~30% of total width
-            new_left_width = int(total_width * 0.3)
-            self.splitter.setSizes([new_left_width, total_width - new_left_width])
-            self.collapse_btn.setText("◄ Collapse")
-            self.is_collapsed = False
-        else:
-            # Collapse: reduce to ~10% of total width
-            new_left_width = int(total_width * 0.1)
-            self.splitter.setSizes([new_left_width, total_width - new_left_width])
-            self.collapse_btn.setText("► Expand")
-            self.is_collapsed = True
+    def resizeEvent(self, event):
+        """Handle window resize to maintain fixed sidebar width"""
+        super().resizeEvent(event)
+        # Maintain fixed sidebar width on window resize
+        if hasattr(self, 'left_panel') and hasattr(self, 'splitter'):
+            sidebar_width = self.left_panel.width()
+            window_width = self.width()
+            right_width = window_width - sidebar_width - 50  # 50 for margins/borders
+            if right_width > 0:
+                self.splitter.setSizes([sidebar_width, right_width])
     
     def reset_data(self):
         """Reset to original data - clears all processing, peaks, and reference patterns"""
@@ -773,7 +793,13 @@ class MainWindow(QMainWindow):
         
         # Plot reference pattern if available (as vertical sticks)
         if hasattr(self, 'current_ref_pattern') and self.current_ref_pattern:
-            tt_ref, int_ref, name = self.current_ref_pattern
+            # Unpack reference pattern data (may have 3 or 4 elements depending on HKL availability)
+            if len(self.current_ref_pattern) == 4:
+                tt_ref, int_ref, name, hkl_ref = self.current_ref_pattern
+            else:
+                tt_ref, int_ref, name = self.current_ref_pattern
+                hkl_ref = None
+            
             # Get updated y-axis limits after adjustment
             if self.plotter and self.plotter.axes:
                 y_min, y_max = self.plotter.axes.get_ylim()
@@ -807,7 +833,8 @@ class MainWindow(QMainWindow):
                 linewidth=1.2,
                 alpha=0.85,
                 offset=ref_offset,
-                max_height=ref_height
+                max_height=ref_height,
+                hkl_labels=hkl_ref  # Pass HKL labels
             )
         
         # Plot detected peaks
@@ -892,10 +919,15 @@ class MainWindow(QMainWindow):
             # Populate search combo
             self.ref_search_combo.clear()
             for pattern in self.reference_db.get_all():
-                display_name = pattern.name or pattern.id
-                if pattern.data.get('source'):
-                    display_name += f" ({pattern.data.get('source')})"
-                self.ref_search_combo.addItem(display_name)
+                # Get display name - prefer name, fallback to id
+                display_name = pattern.name or pattern.id or "Unknown"
+                # Add source suffix if available
+                source = pattern.data.get('source', '')
+                if source:
+                    display_name += f" ({source})"
+                # Only add if we have a valid name/id
+                if display_name != "Unknown":
+                    self.ref_search_combo.addItem(display_name)
         else:
             self.statusBar.showMessage("No reference patterns loaded")
             self.reference_db = ReferenceDatabase()
@@ -921,10 +953,15 @@ class MainWindow(QMainWindow):
                 # Repopulate search combo with all patterns
                 self.ref_search_combo.clear()
                 for pattern in self.reference_db.get_all():
-                    display_name = pattern.name or pattern.id
-                    if pattern.data.get('source'):
-                        display_name += f" ({pattern.data.get('source')})"
-                    self.ref_search_combo.addItem(display_name)
+                    # Get display name - prefer name, fallback to id
+                    display_name = pattern.name or pattern.id or "Unknown"
+                    # Add source suffix if available
+                    source = pattern.data.get('source', '')
+                    if source:
+                        display_name += f" ({source})"
+                    # Only add if we have a valid name/id
+                    if display_name != "Unknown":
+                        self.ref_search_combo.addItem(display_name)
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load database:\n{str(e)}")
     

@@ -18,6 +18,11 @@ class ReferencePattern:
         self.data = data
         self.id = data.get('id', '')
         self.name = data.get('name', '')
+        # If both id and name are empty, try to use id as fallback
+        if not self.name and self.id:
+            self.name = self.id
+        elif not self.id and self.name:
+            self.id = self.name
         self.wavelength = self._extract_wavelength(data)
         self.two_theta = None
         self.intensity = None
@@ -171,12 +176,31 @@ class ReferenceDatabase:
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
+        # Extract filename for MP files that don't have id/name
+        filename = file_path.stem  # filename without extension
+        
         # Handle both single pattern and array of patterns
         if isinstance(data, list):
             for pattern_data in data:
+                # For MP files, extract ID from filename if not present
+                if 'pattern' in pattern_data and not pattern_data.get('id') and not pattern_data.get('name'):
+                    # MP format: filename like "mp-3271_xrd_Cu" -> extract "mp-3271" or "3271"
+                    if filename.startswith('mp-'):
+                        mp_id = filename.split('_')[0]  # Get "mp-3271"
+                        pattern_data['id'] = mp_id
+                        pattern_data['name'] = mp_id  # Use ID as name if no name available
+                        pattern_data['source'] = 'MP'
                 pattern = ReferencePattern(pattern_data)
                 self.patterns.append(pattern)
         else:
+            # For MP files, extract ID from filename if not present
+            if 'pattern' in data and not data.get('id') and not data.get('name'):
+                # MP format: filename like "mp-3271_xrd_Cu" -> extract "mp-3271" or "3271"
+                if filename.startswith('mp-'):
+                    mp_id = filename.split('_')[0]  # Get "mp-3271"
+                    data['id'] = mp_id
+                    data['name'] = mp_id  # Use ID as name if no name available
+                    data['source'] = 'MP'
             pattern = ReferencePattern(data)
             self.patterns.append(pattern)
     
