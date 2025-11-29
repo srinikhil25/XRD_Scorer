@@ -155,7 +155,8 @@ class XRDPlotter:
                 )
                 
                 # Add HKL label above the stick if available
-                if hkl_labels and i < len(hkl_labels) and hkl_labels[i]:
+                # Only label if hkl_labels[i] is not None and not empty
+                if hkl_labels and i < len(hkl_labels) and hkl_labels[i] is not None and hkl_labels[i]:
                     hkl_value = hkl_labels[i]
                     
                     # Format HKL value: convert "101" or [1,0,1] to "(1 0 1)"

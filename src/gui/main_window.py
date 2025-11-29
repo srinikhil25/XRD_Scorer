@@ -264,6 +264,12 @@ class MainWindow(QMainWindow):
         ref_group = QGroupBox("Reference Patterns")
         ref_layout = QVBoxLayout()
         
+        # Refresh button at the top
+        refresh_btn = QPushButton("🔄 Refresh Database")
+        refresh_btn.setToolTip("Reload reference patterns from database directories")
+        refresh_btn.clicked.connect(self.refresh_reference_database)
+        ref_layout.addWidget(refresh_btn)
+        
         self.ref_search_combo = QComboBox()
         self.ref_search_combo.setEditable(True)
         self.ref_search_combo.setPlaceholderText("Search reference patterns...")
@@ -689,8 +695,62 @@ class MainWindow(QMainWindow):
             pattern_data
         )
         
-        # Also overlay the reference pattern
-        self.overlay_reference_pattern()
+        # Overlay reference pattern: show ALL sticks, but label HKL only for matched peaks
+        # Get two-theta range from current data
+        tt_min = np.min(self.current_data.two_theta)
+        tt_max = np.max(self.current_data.two_theta)
+        
+        # Extract matched reference peak indices
+        matched_ref_indices = set()
+        for mp in self.peak_match_result['matched_peaks']:
+            # mp[1] is (ref_index, ref_tt, ref_intensity)
+            matched_ref_indices.add(mp[1][0])
+        
+        # Show ALL reference peaks within range (not just matched ones)
+        if pattern.two_theta is not None and pattern.intensity is not None:
+            # Get all reference peaks within range
+            mask = (pattern.two_theta >= tt_min) & (pattern.two_theta <= tt_max)
+            tt_ref = pattern.two_theta[mask]
+            int_ref = pattern.intensity[mask]
+            
+            # Get original indices for filtered peaks
+            original_indices = np.where(mask)[0]
+            
+            # Create HKL labels list: only matched peaks get labels, others get None
+            hkl_ref = None
+            if pattern.hkl is not None and len(pattern.hkl) == len(pattern.two_theta):
+                hkl_list = list(pattern.hkl) if not isinstance(pattern.hkl, list) else pattern.hkl
+                # Create list with HKL for matched peaks, None for unmatched
+                hkl_ref = []
+                for orig_idx in original_indices:
+                    if orig_idx in matched_ref_indices:
+                        # Matched peak: include HKL label
+                        hkl_ref.append(hkl_list[orig_idx])
+                    else:
+                        # Unmatched peak: no label (None)
+                        hkl_ref.append(None)
+            else:
+                hkl_ref = None
+            
+            # Normalize intensity to match current data scale (30% of max for visibility)
+            if len(int_ref) > 0:
+                max_current = np.max(self.current_data.intensity)
+                max_ref = np.max(int_ref)
+                if max_ref > 0:
+                    # Scale to 30% of max intensity for clear visibility without overwhelming
+                    int_ref = (int_ref / max_ref) * max_current * 0.3
+        else:
+            # Fallback: generate continuous pattern if discrete peaks not available
+            tt_ref, int_ref = pattern.get_continuous_pattern((tt_min, tt_max))
+            hkl_ref = None  # No HKL labels for continuous pattern
+            if len(int_ref) > 0:
+                max_current = np.max(self.current_data.intensity)
+                max_ref = np.max(int_ref)
+                if max_ref > 0:
+                    int_ref = (int_ref / max_ref) * max_current * 0.3
+        
+        # Store for plotting (all sticks, but HKL labels only for matched peaks)
+        self.current_ref_pattern = (tt_ref, int_ref, pattern.name, hkl_ref)
         
         # Save visualization with matched peaks
         self.update_plot()
@@ -931,6 +991,16 @@ class MainWindow(QMainWindow):
         else:
             self.statusBar.showMessage("No reference patterns loaded")
             self.reference_db = ReferenceDatabase()
+    
+    def refresh_reference_database(self):
+        """Refresh reference database by reloading from default paths"""
+        """This will detect any new JSON files added to the database directories"""
+        self.load_reference_database()
+        QMessageBox.information(
+            self,
+            "Database Refreshed",
+            f"Reference database refreshed.\n{len(self.reference_db)} patterns loaded."
+        )
     
     def load_reference_database_dialog(self):
         """Load reference database from dialog"""
