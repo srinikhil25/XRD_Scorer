@@ -296,9 +296,9 @@ $$
    - Window size: $w_k = \lfloor N \cdot f^k \rfloor$ where $f$ is reduction factor
    - For each point $j$:
 
-$$
+```math
 B^{(k)}[j] = \min\left(B^{(k-1)}[j], \min_{i \in [j-w_k/2, j+w_k/2]} B^{(k-1)}[i]\right)
-$$
+```
 3. Background: $B(2θ) = B^{(N_{iter})}(2θ)$
 
 **Parameters:**
@@ -614,9 +614,9 @@ $$
    - Search left from peak: find $i_{left}$ where $I[i_{left}] ≤ I_{HM}$
    - Linear interpolation:
 
-$$
+```math
 2θ_{left} = 2θ[i_{left}] + \frac{I_{HM} - I[i_{left}]}{I[i_{left}+1] - I[i_{left}]} \cdot (2θ[i_{left}+1] - 2θ[i_{left}])
-$$
+```
 4. Find right half-max point (similar interpolation)
 5. Calculate: $\text{FWHM} = 2θ_{right} - 2θ_{left}$
 
@@ -693,9 +693,9 @@ Reference pattern matching compares experimental peaks with known crystal struct
 1. Extract two-theta directly if available
 2. If not, calculate from d-spacing using Bragg's law:
 
-$$
+```math
 2θ = 2 \arcsin\left(\frac{\lambda}{2d}\right)
-$$
+```
 3. Extract HKL values (string format: "1 0 4")
 
 ### 7.2.1 Database Loading Mechanism
