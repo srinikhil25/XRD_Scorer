@@ -295,9 +295,10 @@ $$
 2. For iteration $k = 1, 2, ..., N_{iter}$:
    - Window size: $w_k = \lfloor N \cdot f^k \rfloor$ where $f$ is reduction factor
    - For each point $j$:
-     $$
-     B^{(k)}[j] = \min\left(B^{(k-1)}[j], \min_{i \in [j-w_k/2, j+w_k/2]} B^{(k-1)}[i]\right)
-     $$
+
+$$
+B^{(k)}[j] = \min\left(B^{(k-1)}[j], \min_{i \in [j-w_k/2, j+w_k/2]} B^{(k-1)}[i]\right)
+$$
 3. Background: $B(2θ) = B^{(N_{iter})}(2θ)$
 
 **Parameters:**
@@ -386,27 +387,32 @@ $$
 **Algorithm:**
 
 1. Calculate angular shift for each 2θ value:
-   $$
-   \theta = \frac{2θ}{2} \quad \text{(convert to θ)}
-   $$
-   $$
-   \Delta(2θ) = 2 \cdot \arctan\left[\tan(\theta) \cdot (R_\lambda - 1)\right]
-   $$
+
+$$
+\theta = \frac{2θ}{2} \quad \text{(convert to θ)}
+$$
+
+$$
+\Delta(2θ) = 2 \cdot \arctan\left[\tan(\theta) \cdot (R_\lambda - 1)\right]
+$$
 
 2. Calculate Kα2 two-theta positions:
-   $$
-   2θ_{Kα2} = 2θ - \Delta(2θ)
-   $$
+
+$$
+2θ_{Kα2} = 2θ - \Delta(2θ)
+$$
 
 3. Interpolate Kα2 intensities:
-   $$
-   I_{Kα2}(2θ) = R_I \cdot I(2θ_{Kα2})
-   $$
+
+$$
+I_{Kα2}(2θ) = R_I \cdot I(2θ_{Kα2})
+$$
 
 4. Subtract Kα2 from original:
-   $$
-   I_{Kα1}(2θ) = I(2θ) - I_{Kα2}(2θ)
-   $$
+
+$$
+I_{Kα1}(2θ) = I(2θ) - I_{Kα2}(2θ)
+$$
 
 **Implementation:**
 - Uses linear interpolation for shifted positions
@@ -473,15 +479,18 @@ where the maxima are taken over the intervals until a higher peak is encountered
 **Algorithm:**
 
 1. Auto-determine distance parameter:
-   $$
-   d = \max\left(1, \left\lfloor\frac{0.1°}{\Delta(2θ)}\right\rfloor\right)
-   $$
-   where $\Delta(2θ)$ is the angular spacing between data points.
+
+$$
+d = \max\left(1, \left\lfloor\frac{0.1°}{\Delta(2θ)}\right\rfloor\right)
+$$
+
+where $\Delta(2θ)$ is the angular spacing between data points.
 
 2. Auto-determine prominence threshold:
-   $$
-   P_{min} = 0.05 \cdot \max(I)
-   $$
+
+$$
+P_{min} = 0.05 \cdot \max(I)
+$$
 
 3. Find peaks using `scipy.signal.find_peaks()`:
    - `prominence ≥ P_{min}`
@@ -534,9 +543,10 @@ $$
 **Algorithm:**
 
 1. Calculate first derivative:
-   $$
-   \frac{dI}{d(2θ)}[i] = I[i+1] - I[i]
-   $$
+
+$$
+\frac{dI}{d(2θ)}[i] = I[i+1] - I[i]
+$$
 
 2. Find zero crossings:
    - If $\frac{dI}{d(2θ)}[i-1] > 0$ and $\frac{dI}{d(2θ)}[i] < 0$: peak at $i$
@@ -603,18 +613,21 @@ $$
 3. Find left half-max point:
    - Search left from peak: find $i_{left}$ where $I[i_{left}] ≤ I_{HM}$
    - Linear interpolation:
-     $$
-     2θ_{left} = 2θ[i_{left}] + \frac{I_{HM} - I[i_{left}]}{I[i_{left}+1] - I[i_{left}]} \cdot (2θ[i_{left}+1] - 2θ[i_{left}])
-     $$
+
+$$
+2θ_{left} = 2θ[i_{left}] + \frac{I_{HM} - I[i_{left}]}{I[i_{left}+1] - I[i_{left}]} \cdot (2θ[i_{left}+1] - 2θ[i_{left}])
+$$
 4. Find right half-max point (similar interpolation)
 5. Calculate: $\text{FWHM} = 2θ_{right} - 2θ_{left}$
 
 **Applications:**
 - **Crystallite Size (Scherrer Equation):**
-  $$
-  D = \frac{K\lambda}{\beta\cos\theta}
-  $$
-  where $\beta = \text{FWHM}$ (in radians), $K ≈ 0.9$ (shape factor)
+
+$$
+D = \frac{K\lambda}{\beta\cos\theta}
+$$
+
+where $\beta = \text{FWHM}$ (in radians), $K ≈ 0.9$ (shape factor)
 
 - **Strain Analysis:** Peak broadening due to microstrain
 
@@ -679,9 +692,10 @@ Reference pattern matching compares experimental peaks with known crystal struct
 **ICDD Format Parsing:**
 1. Extract two-theta directly if available
 2. If not, calculate from d-spacing using Bragg's law:
-   $$
-   2θ = 2 \arcsin\left(\frac{\lambda}{2d}\right)
-   $$
+
+$$
+2θ = 2 \arcsin\left(\frac{\lambda}{2d}\right)
+$$
 3. Extract HKL values (string format: "1 0 4")
 
 ### 7.2.1 Database Loading Mechanism
@@ -743,16 +757,18 @@ $$
 
 1. For each detected peak at $2θ_{det}$:
    - Find closest reference peak:
-     $$
-     \text{Match} = \arg\min_{2θ_{ref}} |2θ_{det} - 2θ_{ref}|
-     $$
+
+$$
+\text{Match} = \arg\min_{2θ_{ref}} |2θ_{det} - 2θ_{ref}|
+$$
    - If $|2θ_{det} - 2θ_{ref}| < \tau$: match found
    - Mark reference peak as matched (one-to-one matching)
 
 2. Calculate match score:
-   $$
-   \text{Match Score} = \frac{N_{matched}}{N_{ref}} \times 100\%
-   $$
+
+$$
+\text{Match Score} = \frac{N_{matched}}{N_{ref}} \times 100\%
+$$
 
 **Parameters:**
 - `tolerance`: Angular tolerance in degrees (default: 0.2°)
