@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QSpinBox, QDoubleSpinBox, QGroupBox, QMessageBox,
                              QSplitter, QStatusBar)
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QAction
+from PyQt6.QtGui import QAction, QIcon
 try:
     from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 except ImportError:
@@ -53,6 +53,10 @@ class MainWindow(QMainWindow):
     def init_ui(self):
         """Initialize the user interface"""
         self.setWindowTitle("XRD Scorer - X-ray Diffraction Data Analysis")
+        
+        # Set application icon
+        self.set_window_icon()
+        
         self.setGeometry(100, 100, 1400, 900)
         
         # Get screen width for calculating sidebar width
@@ -1128,6 +1132,45 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open project:\n{str(e)}")
     
+    def set_window_icon(self):
+        """Set the application window icon"""
+        def get_resource_path(relative_path):
+            """Get absolute path to resource, works for dev and for PyInstaller"""
+            try:
+                # PyInstaller creates a temp folder and stores path in _MEIPASS
+                base_path = Path(sys._MEIPASS)
+            except Exception:
+                # Running in development mode
+                base_path = Path(__file__).parent.parent.parent
+            
+            return base_path / relative_path
+        
+        # Try to load icon from multiple possible locations
+        icon_paths = [
+            get_resource_path("assets/icons/app_icon.ico"),
+            get_resource_path("assets/icons/app_icon.png"),
+            get_resource_path("icon.ico"),
+            get_resource_path("icon.png"),
+            # Fallback to development paths
+            Path(__file__).parent.parent.parent / "assets" / "icons" / "app_icon.ico",
+            Path(__file__).parent.parent.parent / "assets" / "icons" / "app_icon.png",
+            Path(__file__).parent.parent.parent / "icon.ico",
+            Path(__file__).parent.parent.parent / "icon.png",
+        ]
+        
+        for icon_path in icon_paths:
+            if icon_path.exists():
+                try:
+                    icon = QIcon(str(icon_path))
+                    self.setWindowIcon(icon)
+                    return
+                except Exception as e:
+                    print(f"Warning: Could not load icon from {icon_path}: {e}")
+                    continue
+        
+        # If no icon found, use default (no icon will be set)
+        print("Info: No application icon found. Place an icon file at assets/icons/app_icon.ico")
+    
     def show_about(self):
         """Show about dialog"""
         QMessageBox.about(
@@ -1149,8 +1192,40 @@ def main():
     """Main entry point"""
     from PyQt6.QtWidgets import QApplication
     
+    def get_resource_path(relative_path):
+        """Get absolute path to resource, works for dev and for PyInstaller"""
+        try:
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            base_path = Path(sys._MEIPASS)
+        except Exception:
+            # Running in development mode
+            base_path = Path(__file__).parent.parent.parent
+        
+        return base_path / relative_path
+    
     app = QApplication(sys.argv)
     app.setStyle('Fusion')  # Modern look
+    
+    # Set application icon (for taskbar, etc.)
+    icon_paths = [
+        get_resource_path("assets/icons/app_icon.ico"),
+        get_resource_path("assets/icons/app_icon.png"),
+        get_resource_path("icon.ico"),
+        get_resource_path("icon.png"),
+        # Fallback to development paths
+        Path(__file__).parent.parent.parent / "assets" / "icons" / "app_icon.ico",
+        Path(__file__).parent.parent.parent / "assets" / "icons" / "app_icon.png",
+        Path(__file__).parent.parent.parent / "icon.ico",
+        Path(__file__).parent.parent.parent / "icon.png",
+    ]
+    
+    for icon_path in icon_paths:
+        if icon_path.exists():
+            try:
+                app.setWindowIcon(QIcon(str(icon_path)))
+                break
+            except Exception:
+                continue
     
     window = MainWindow()
     window.show()
